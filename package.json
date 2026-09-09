@@ -1,0 +1,35 @@
+{
+  "name": "lychee",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@openmaic/dsl": "workspace:*",
+    "@openmaic/renderer": "workspace:*",
+    "clsx": "2.1.1",
+    "echarts": "6.1.0",
+    "katex": "0.16.47",
+    "lucide-react": "0.562.0",
+    "motion": "12.43.0",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "shiki": "4.4.3",
+    "tailwind-merge": "3.6.0",
+    "tinycolor2": "1.6.0"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "4.3.3",
+    "@types/react": "19.2.18",
+    "@types/react-dom": "19.2.7",
+    "@vitejs/plugin-react": "4.7.0",
+    "tailwindcss": "4.3.3",
+    "typescript": "5.9.3",
+    "vite": "6.4.3"
+  }
+}

@@ -1,0 +1,6 @@
+packages:
+  - '.'
+  - 'packages/@openmaic/dsl'
+  - 'packages/@openmaic/renderer'
+allowBuilds:
+  esbuild: true

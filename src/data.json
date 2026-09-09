@@ -1,0 +1,248 @@
+{
+  "version": "0.1",
+  "course": {
+    "id": "lychee-demo",
+    "title": "示例课程:光合作用",
+    "subtitle": "高一生物 · 第一课时",
+    "teacher": {
+      "name": "张老师"
+    }
+  },
+  "scenes": [
+    {
+      "id": "scene-1",
+      "type": "slide",
+      "title": "课程导入",
+      "order": 0,
+      "audio": "assets/audio/scene-1.mp3",
+      "content": {
+        "type": "slide",
+        "schemaVersion": 1,
+        "canvas": {
+          "id": "slide-1",
+          "viewportSize": 1000,
+          "viewportRatio": 0.5625,
+          "theme": {
+            "backgroundColor": "#ffffff",
+            "themeColors": ["#722ed1", "#5b9bd5", "#f5a623", "#2e7d32"],
+            "fontColor": "#1f2430",
+            "fontName": "Microsoft YaHei"
+          },
+          "background": { "type": "solid", "color": "#ffffff" },
+          "elements": [
+            {
+              "id": "bg-bar",
+              "type": "shape",
+              "left": 0,
+              "top": 0,
+              "width": 1000,
+              "height": 562,
+              "rotate": 0,
+              "path": "M 0 0 L 1000 0 L 1000 1000 L 0 1000 Z",
+              "viewBox": [1000, 1000],
+              "fixedRatio": false,
+              "fill": "#f4f0ff"
+            },
+            {
+              "id": "title",
+              "type": "text",
+              "left": 200,
+              "top": 170,
+              "width": 600,
+              "height": 120,
+              "rotate": 0,
+              "content": "<p style=\"text-align:center;font-size:64px;font-weight:700;color:#1f2430\">光合作用</p>",
+              "defaultFontName": "Microsoft YaHei",
+              "defaultColor": "#1f2430"
+            },
+            {
+              "id": "subtitle",
+              "type": "text",
+              "left": 250,
+              "top": 300,
+              "width": 500,
+              "height": 60,
+              "rotate": 0,
+              "content": "<p style=\"text-align:center;font-size:28px;color:#6b7280\">—— 植物是如何制造养分的</p>",
+              "defaultFontName": "Microsoft YaHei",
+              "defaultColor": "#6b7280"
+            },
+            {
+              "id": "leaf",
+              "type": "image",
+              "left": 420,
+              "top": 380,
+              "width": 160,
+              "height": 120,
+              "rotate": 0,
+              "src": "assets/img/leaf.png",
+              "fixedRatio": true
+            }
+          ]
+        }
+      },
+      "actions": [
+        { "type": "speech", "id": "a1-1", "text": "同学们好,今天我们一起来学习光合作用。" },
+        { "type": "spotlight", "id": "a1-2", "elementId": "title", "dimOpacity": 0.5 },
+        { "type": "laser", "id": "a1-3", "elementId": "leaf", "color": "#ff0000" }
+      ]
+    },
+    {
+      "id": "scene-2",
+      "type": "slide",
+      "title": "核心过程",
+      "order": 1,
+      "audio": "assets/audio/scene-2.mp3",
+      "content": {
+        "type": "slide",
+        "schemaVersion": 1,
+        "canvas": {
+          "id": "slide-2",
+          "viewportSize": 1000,
+          "viewportRatio": 0.5625,
+          "theme": {
+            "backgroundColor": "#ffffff",
+            "themeColors": ["#722ed1", "#5b9bd5", "#f5a623", "#2e7d32"],
+            "fontColor": "#1f2430",
+            "fontName": "Microsoft YaHei"
+          },
+          "background": { "type": "solid", "color": "#ffffff" },
+          "elements": [
+            {
+              "id": "head",
+              "type": "text",
+              "left": 60,
+              "top": 40,
+              "width": 880,
+              "height": 60,
+              "rotate": 0,
+              "content": "<p style=\"font-size:36px;font-weight:700;color:#1f2430\">光合作用的场所:叶绿体</p>",
+              "defaultFontName": "Microsoft YaHei",
+              "defaultColor": "#1f2430"
+            },
+            {
+              "id": "formula",
+              "type": "text",
+              "left": 80,
+              "top": 150,
+              "width": 840,
+              "height": 90,
+              "rotate": 0,
+              "content": "<p style=\"text-align:center;font-size:32px;color:#0f3460\">6CO₂ + 6H₂O &nbsp;→(光能,叶绿体)&nbsp; C₆H₁₂O₆ + 6O₂</p>",
+              "defaultFontName": "Microsoft YaHei",
+              "defaultColor": "#0f3460"
+            },
+            {
+              "id": "diagram",
+              "type": "shape",
+              "left": 100,
+              "top": 300,
+              "width": 180,
+              "height": 180,
+              "rotate": 0,
+              "path": "M 500 0 A 500 500 0 1 1 499.9 0 Z",
+              "viewBox": [1000, 1000],
+              "fixedRatio": true,
+              "fill": "#4caf50",
+              "text": {
+                "content": "<p style=\"text-align:center;font-size:28px;color:#fff\">叶绿体</p>",
+                "defaultFontName": "Microsoft YaHei",
+                "defaultColor": "#ffffff",
+                "align": "middle"
+              }
+            },
+            {
+              "id": "note",
+              "type": "text",
+              "left": 340,
+              "top": 340,
+              "width": 560,
+              "height": 120,
+              "rotate": 0,
+              "content": "<p style=\"font-size:24px;color:#444\">分为两个阶段:<br/>光反应(需光)+ 暗反应(卡尔文循环)</p>",
+              "defaultFontName": "Microsoft YaHei",
+              "defaultColor": "#444444"
+            }
+          ]
+        }
+      },
+      "actions": [
+        { "type": "speech", "id": "a2-1", "text": "光合作用发生在叶绿体里。" },
+        { "type": "laser", "id": "a2-2", "elementId": "formula", "color": "#ff5a2a" },
+        { "type": "speech", "id": "a2-3", "text": "这一步把光能转化为化学能。" },
+        { "type": "wb_open", "id": "a2-4" },
+        { "type": "wb_draw_text", "id": "a2-5", "content": "叶绿体", "x": 120, "y": 60, "width": 300, "height": 100, "fontSize": 44, "color": "#2e7d32" },
+        { "type": "wb_draw_line", "id": "a2-6", "startX": 120, "startY": 160, "endX": 360, "endY": 160, "color": "#e74c3c", "width": 6 },
+        { "type": "wb_draw_shape", "id": "a2-7", "shape": "circle", "x": 420, "y": 60, "width": 140, "height": 140, "fillColor": "#4caf50" },
+        { "type": "wb_close", "id": "a2-8" }
+      ]
+    },
+    {
+      "id": "scene-3",
+      "type": "slide",
+      "title": "知识小结",
+      "order": 2,
+      "audio": "assets/audio/scene-3.mp3",
+      "content": {
+        "type": "slide",
+        "schemaVersion": 1,
+        "canvas": {
+          "id": "slide-3",
+          "viewportSize": 1000,
+          "viewportRatio": 0.5625,
+          "theme": {
+            "backgroundColor": "#eef6ee",
+            "themeColors": ["#722ed1", "#5b9bd5", "#f5a623", "#2e7d32"],
+            "fontColor": "#1f2430",
+            "fontName": "Microsoft YaHei"
+          },
+          "background": { "type": "solid", "color": "#eef6ee" },
+          "elements": [
+            {
+              "id": "s1",
+              "type": "text",
+              "left": 100,
+              "top": 120,
+              "width": 800,
+              "height": 60,
+              "rotate": 0,
+              "content": "<p style=\"font-size:30px;color:#2e7d32\">1. 场所:叶绿体</p>",
+              "defaultFontName": "Microsoft YaHei",
+              "defaultColor": "#2e7d32"
+            },
+            {
+              "id": "s2",
+              "type": "text",
+              "left": 100,
+              "top": 220,
+              "width": 800,
+              "height": 60,
+              "rotate": 0,
+              "content": "<p style=\"font-size:30px;color:#2e7d32\">2. 原料:CO₂ + H₂O &nbsp;&nbsp; 产物:有机物 + O₂</p>",
+              "defaultFontName": "Microsoft YaHei",
+              "defaultColor": "#2e7d32"
+            },
+            {
+              "id": "s3",
+              "type": "text",
+              "left": 100,
+              "top": 320,
+              "width": 800,
+              "height": 60,
+              "rotate": 0,
+              "content": "<p style=\"font-size:30px;color:#2e7d32\">3. 意义:为生物圈提供能量来源</p>",
+              "defaultFontName": "Microsoft YaHei",
+              "defaultColor": "#2e7d32"
+            }
+          ]
+        }
+      },
+      "actions": [
+        { "type": "speech", "id": "a3-1", "text": "我们小结一下光合作用。" },
+        { "type": "spotlight", "id": "a3-2", "elementId": "s1", "dimOpacity": 0.5 },
+        { "type": "spotlight", "id": "a3-3", "elementId": "s2", "dimOpacity": 0.5 },
+        { "type": "spotlight", "id": "a3-4", "elementId": "s3", "dimOpacity": 0.5 }
+      ]
+    }
+  ]
+}
