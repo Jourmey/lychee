@@ -33,6 +33,12 @@ export interface WhiteboardItem {
   endY?: number;
 }
 
+/** 一条课堂对话（带说话人角色）。角色目前为 `teacher` / `student`。 */
+export interface CourseDialogueTurn {
+  speaker: string;
+  text: string;
+}
+
 /** A scene as authored in data.json. Only 'slide' scenes are rendered by the demo. */
 export interface CourseScene {
   id: string;
@@ -49,6 +55,8 @@ export interface CourseScene {
   };
   /** Playback verbs sequenced while this page is shown. */
   actions: Action[];
+  /** 本页课堂对话（逐字稿按页切分，驱动右侧「对话」Tab）。 */
+  dialogue?: CourseDialogueTurn[];
 }
 
 export interface Course {

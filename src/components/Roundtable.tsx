@@ -12,6 +12,7 @@ import { cn } from '../lib/cn';
 export function Roundtable({
   toolbar,
   teacherName,
+  teacherAvatar,
   lectureSpeech,
   idleSpeech,
   engineState,
@@ -19,6 +20,8 @@ export function Roundtable({
 }: {
   readonly toolbar?: ReactNode;
   readonly teacherName: string;
+  /** 教师头像（可选）——有则用图片，无则退回内置图标。 */
+  readonly teacherAvatar?: string;
   readonly lectureSpeech: string | null;
   readonly idleSpeech: string | null;
   readonly engineState: 'idle' | 'playing' | 'paused';
@@ -54,7 +57,11 @@ export function Roundtable({
                   )}
                 />
                 <div className="w-10 h-10 rounded-full bg-white dark:bg-gray-800 overflow-hidden relative z-10 shadow-sm border border-gray-50 dark:border-gray-700 flex items-center justify-center">
-                  <BookOpen className="w-5 h-5 text-purple-500 dark:text-purple-300" />
+                  {teacherAvatar ? (
+                    <img src={teacherAvatar} alt={teacherName} className="w-full h-full object-cover" />
+                  ) : (
+                    <BookOpen className="w-5 h-5 text-purple-500 dark:text-purple-300" />
+                  )}
                 </div>
                 {isSpeaking && (
                   <div className="absolute -right-0.5 top-0.5 w-4 h-4 bg-green-500 dark:bg-green-400 rounded-full border-2 border-white dark:border-gray-800 flex items-center justify-center z-20">
@@ -89,7 +96,11 @@ export function Roundtable({
                     {/* Teacher avatar corner */}
                     <div className="absolute -top-2.5 -left-2.5 z-20 pointer-events-none select-none">
                       <div className="w-6 h-6 rounded-full overflow-hidden border-2 border-purple-200 dark:border-purple-700 shadow-sm flex items-center justify-center bg-purple-50 dark:bg-purple-900/30">
-                        <BookOpen className="w-3.5 h-3.5 text-purple-500 dark:text-purple-300" />
+                        {teacherAvatar ? (
+                          <img src={teacherAvatar} alt={teacherName} className="w-full h-full object-cover" />
+                        ) : (
+                          <BookOpen className="w-3.5 h-3.5 text-purple-500 dark:text-purple-300" />
+                        )}
                       </div>
                     </div>
 

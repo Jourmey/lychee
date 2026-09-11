@@ -3,3 +3,6 @@ dist
 packages
 *.local
 .DS_Store
+.idea
+data/
+public/courseware

@@ -1,5 +1,6 @@
 import { useCallback, useMemo, useState } from 'react';
-import data from './data.json';
+// 课程数据统一放在仓库根的 data/ 目录，与代码分离（由 scripts/build-course.mjs 生成）。
+import data from '../data/data.json';
 import type { Course } from './types';
 import { PlaybackChrome } from './components/PlaybackChrome';
 

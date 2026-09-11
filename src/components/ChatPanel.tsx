@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import type { Action } from '@openmaic/dsl';
 import {
   BookOpen,
@@ -26,47 +26,36 @@ interface Agent {
   role?: string;
   color: string; // ring / text accent
   avatarBg: string; // gradient bg
+  avatar?: string; // 默认头像图（public/avatars/）；无则退回姓名首字
   isTeacher?: boolean;
 }
 
-const AGENTS: Agent[] = [
-  { id: 'me', name: '我', role: '老师', color: '#8b5cf6', avatarBg: 'from-purple-500 to-indigo-600', isTeacher: true },
-  { id: 'zhoujing', name: '周京', role: '助教', color: '#60a5fa', avatarBg: 'from-blue-500 to-sky-600' },
-  { id: 'zhoumeng', name: '周梦', color: '#a78bfa', avatarBg: 'from-violet-500 to-purple-600' },
-  { id: 'zhouzhao', name: '周朝', color: '#2dd4bf', avatarBg: 'from-teal-500 to-emerald-600' },
-  { id: 'zhouzhou', name: '周周', color: '#fbbf24', avatarBg: 'from-amber-500 to-orange-600' },
-];
-
-const AGENT_BY_ID = Object.fromEntries(AGENTS.map((a) => [a.id, a]));
-
-interface Message {
-  agentId: string;
-  text: string;
+/**
+ * 教室里的两种角色：主讲老师（名字/头像取自课程元信息）+ 学生。
+ * 逐字稿里的 SpeakerId 已在 scripts/build-course.mjs 归一到 teacher / student，
+ * 因此这里只需按角色取到身份与配色。
+ */
+function buildAgents(course: Course): Record<string, Agent> {
+  return {
+    teacher: {
+      id: 'teacher',
+      name: course.course.teacher?.name ?? '授课教师',
+      role: '老师',
+      color: '#8b5cf6',
+      avatarBg: 'from-purple-500 to-indigo-600',
+      avatar: course.course.teacher?.avatar ?? '/avatars/teacher.svg',
+      isTeacher: true,
+    },
+    student: {
+      id: 'student',
+      name: '同学',
+      role: '学生',
+      color: '#60a5fa',
+      avatarBg: 'from-blue-500 to-sky-600',
+      avatar: '/avatars/student1.svg',
+    },
+  };
 }
-
-/** Static example transcript matching the live classroom's first turn. */
-const MESSAGES: Message[] = [
-  {
-    agentId: 'zhoujing',
-    text: '大家好,我是周京。欢迎加入我们这节「重塑你的奥德赛」挑战课。这节课我们会一起探索如何通过不同的角度,重新认识和定义自己真正想要的成长路径。',
-  },
-  {
-    agentId: 'me',
-    text: '哇,周老师讲得真好。那就从「我想要成为什么样的人」这一步开始吧,大家也可以跟着一起想一想。',
-  },
-  {
-    agentId: 'zhoumeng',
-    text: '在这一环节,大家会重新认识自己真正感兴趣的方向。可以大胆说出你的想法,我们一起梳理出一条属于自己的成长主线。',
-  },
-  {
-    agentId: 'zhouzhao',
-    text: '我的建议是把目标拆成几个可以落地的小阶段,比如「先认识自己 → 再定方向 → 最后一步步行动」,这样更容易坚持下来。',
-  },
-  {
-    agentId: 'zhouzhou',
-    text: '听起来很有意思!那我们就从第一个小问题开始:如果完全不受任何限制,你最想成为怎样的自己?',
-  },
-];
 
 /** Inline action chips shown in the lecture notes (mirrors OpenMAIC). */
 const ACTION_ICON_ONLY: Record<string, { Icon: typeof Flashlight; style: string }> = {
@@ -87,11 +76,15 @@ function AgentAvatar({ agent }: { readonly agent: Agent }) {
     <div className="relative shrink-0">
       <div
         className={cn(
-          'flex h-7 w-7 items-center justify-center rounded-full bg-gradient-to-br text-[11px] font-bold text-white',
+          'flex h-7 w-7 items-center justify-center overflow-hidden rounded-full bg-gradient-to-br text-[11px] font-bold text-white',
           agent.avatarBg,
         )}
       >
-        {agent.name.slice(0, 1)}
+        {agent.avatar ? (
+          <img src={agent.avatar} alt={agent.name} className="h-full w-full object-cover" />
+        ) : (
+          agent.name.slice(0, 1)
+        )}
       </div>
       {agent.isTeacher && (
         <span className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full border-2 border-gray-900 bg-green-500" />
@@ -258,6 +251,10 @@ export function ChatPanel({
   const [draft, setDraft] = useState('');
   const width = collapsed ? 0 : 400;
 
+  const agents = useMemo(() => buildAgents(course), [course]);
+  // 对话内容取自「当前页」的逐字稿 —— 翻页即切换，和左侧课件 / 右侧笔记保持同步。
+  const turns = course.scenes[currentSceneIndex]?.dialogue ?? [];
+
   const tabCls = (active: boolean) =>
     cn(
       'flex items-center justify-center gap-1 text-xs font-semibold h-full flex-1 transition-colors',
@@ -309,8 +306,11 @@ export function ChatPanel({
       {/* 对话 tab */}
       {activeTab === 'chat' && (
         <>
-          {/* Support-interactive toggle */}
-          <div className="shrink-0 flex items-center justify-end px-3 pt-2">
+          {/* 当前页标识 + support-interactive toggle */}
+          <div className="shrink-0 flex items-center justify-between gap-2 px-3 pt-2">
+            <span className="text-[11px] font-semibold text-gray-400 dark:text-gray-500 truncate">
+              第 {currentSceneIndex + 1} 页 · 课堂对话
+            </span>
             <button
               onClick={() => setSupportInteractive(!supportInteractive)}
               className={cn(
@@ -339,24 +339,25 @@ export function ChatPanel({
             </button>
           </div>
 
-          {/* Messages */}
+          {/* Messages — 当前页课堂对话，随翻页切换 */}
           <div className="flex-1 overflow-y-auto p-3 space-y-4 scrollbar-hide">
-            {MESSAGES.map((m, i) => {
-              const agent = AGENT_BY_ID[m.agentId];
-              const isTeacher = agent?.isTeacher;
-              return (
-                <div key={i} className="flex flex-col gap-1">
-                  <div className={cn('flex gap-2', isTeacher ? 'opacity-80' : '')}>
-                    {agent && <AgentAvatar agent={agent} />}
+            {turns.length === 0 ? (
+              <div className="flex h-full items-center justify-center text-[12px] text-gray-400 dark:text-gray-500">
+                本页暂无课堂对话
+              </div>
+            ) : (
+              turns.map((t, i) => {
+                const agent = agents[t.speaker] ?? agents.student;
+                const isTeacher = agent.isTeacher;
+                return (
+                  <div key={i} className={cn('flex gap-2', isTeacher ? 'opacity-80' : '')}>
+                    <AgentAvatar agent={agent} />
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-1.5 mb-0.5">
-                        <span
-                          className="text-[11px] font-bold"
-                          style={{ color: agent?.color }}
-                        >
-                          {agent?.name}
+                        <span className="text-[11px] font-bold" style={{ color: agent.color }}>
+                          {agent.name}
                         </span>
-                        {agent?.role && (
+                        {agent.role && (
                           <span className="text-[9px] px-1 py-px rounded bg-gray-100 dark:bg-gray-800 text-gray-400 dark:text-gray-500">
                             {agent.role}
                           </span>
@@ -370,14 +371,13 @@ export function ChatPanel({
                             : 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-200',
                         )}
                       >
-                        {m.text}
+                        {t.text}
                       </div>
                     </div>
                   </div>
-                </div>
-              );
-            })}
-            <div />
+                );
+              })
+            )}
           </div>
 
           {/* Input */}

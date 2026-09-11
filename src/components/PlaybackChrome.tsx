@@ -3,11 +3,10 @@ import type { Course } from '../types';
 import { usePlayback } from '../lib/usePlayback';
 import { SceneSidebar } from './SceneSidebar';
 import { Header } from './Header';
-import { SlideStage } from './SlideStage';
+import { ItsStage } from './ItsStage';
 import { Roundtable } from './Roundtable';
 import { CanvasToolbar } from './CanvasToolbar';
 import { ChatPanel } from './ChatPanel';
-import { BookOpen } from 'lucide-react';
 
 export function PlaybackChrome({
   course,
@@ -25,7 +24,6 @@ export function PlaybackChrome({
   const stageRef = useRef<HTMLDivElement>(null);
 
   const currentScene = course.scenes[playback.currentSceneIndex] ?? null;
-  const slide = currentScene?.content?.type === 'slide' ? currentScene.content.canvas : null;
 
   const toggleFullscreen = useCallback(() => {
     const el = stageRef.current;
@@ -66,21 +64,7 @@ export function PlaybackChrome({
             ref={stageRef}
             className="overflow-hidden relative flex-1 min-h-0 isolate"
           >
-            {slide ? (
-              <SlideStage
-                slide={slide}
-                effects={playback.effects}
-                whiteboardOpen={playback.whiteboardOpen}
-                whiteboardItems={playback.whiteboardItems}
-              />
-            ) : (
-              <div className="flex h-full items-center justify-center text-gray-400">
-                <div className="flex flex-col items-center gap-2">
-                  <BookOpen className="w-8 h-8" />
-                  <span>暂不支持该场景类型</span>
-                </div>
-              </div>
-            )}
+            <ItsStage currentSceneIndex={playback.currentSceneIndex} />
           </div>
 
           {/* Roundtable Area */}
@@ -108,6 +92,7 @@ export function PlaybackChrome({
                 </div>
               }
               teacherName={course.course.teacher?.name ?? '授课教师'}
+              teacherAvatar={course.course.teacher?.avatar}
               lectureSpeech={playback.lectureSpeech}
               idleSpeech={playback.idleSpeech}
               engineState={playback.engineState}
