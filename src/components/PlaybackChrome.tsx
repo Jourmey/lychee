@@ -4,6 +4,7 @@ import { usePlayback } from '../lib/usePlayback';
 import { SceneSidebar } from './SceneSidebar';
 import { Header } from './Header';
 import { ItsStage } from './ItsStage';
+import { CursorHighlight } from './CursorHighlight';
 import { Roundtable } from './Roundtable';
 import { CanvasToolbar } from './CanvasToolbar';
 import { ChatPanel } from './ChatPanel';
@@ -64,7 +65,11 @@ export function PlaybackChrome({
             ref={stageRef}
             className="overflow-hidden relative flex-1 min-h-0 isolate"
           >
-            <ItsStage currentSceneIndex={playback.currentSceneIndex} />
+            <ItsStage
+              currentSceneIndex={playback.currentSceneIndex}
+              firedStepCount={playback.firedStepCount}
+            />
+            <CursorHighlight highlight={playback.activeHighlight} />
           </div>
 
           {/* Roundtable Area */}

@@ -10,7 +10,13 @@ import {
   Sparkles,
 } from 'lucide-react';
 import { cn } from '../lib/cn';
+import { useDragResize } from '../lib/useDragResize';
+import { ResizeHandle } from './ResizeHandle';
 import type { Course } from '../types';
+
+const DEFAULT_WIDTH = 400;
+const MIN_WIDTH = 260;
+const MAX_WIDTH = 720;
 
 /**
  * ChatPanel — replicates OpenMAIC's right-side drawer. In the real product the
@@ -249,7 +255,15 @@ export function ChatPanel({
   const [activeTab, setActiveTab] = useState<'lecture' | 'chat'>('chat');
   const [supportInteractive, setSupportInteractive] = useState(false);
   const [draft, setDraft] = useState('');
-  const width = collapsed ? 0 : 400;
+  // 面板在右侧 → 手柄在它左边缘，往左拖才是变宽。
+  const { size: width, dragging, onDragStart } = useDragResize({
+    axis: 'x',
+    initial: DEFAULT_WIDTH,
+    min: MIN_WIDTH,
+    max: MAX_WIDTH,
+    invert: true,
+  });
+  const displayWidth = collapsed ? 0 : width;
 
   const agents = useMemo(() => buildAgents(course), [course]);
   // 对话内容取自「当前页」的逐字稿 —— 翻页即切换，和左侧课件 / 右侧笔记保持同步。
@@ -266,9 +280,11 @@ export function ChatPanel({
 
   return (
     <div
-      style={{ width }}
+      style={{ width: displayWidth, transition: dragging ? 'none' : undefined }}
       className="bg-white/80 dark:bg-gray-900/80 backdrop-blur-xl border-l border-gray-100 dark:border-gray-800 shadow-[-2px_0_24px_rgba(0,0,0,0.02)] flex flex-col shrink-0 z-20 relative overflow-hidden transition-[width] duration-300"
     >
+      {!collapsed && <ResizeHandle edge="left" onMouseDown={onDragStart} />}
+
       {/* Tab header */}
       <div className="h-11 shrink-0 flex items-center gap-1 mt-2 px-2 border-b border-gray-100 dark:border-gray-800">
         <button

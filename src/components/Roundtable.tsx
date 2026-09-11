@@ -1,6 +1,12 @@
 import type { ReactNode } from 'react';
 import { BookOpen, Pause, Play } from 'lucide-react';
 import { cn } from '../lib/cn';
+import { useDragResize } from '../lib/useDragResize';
+import { ResizeHandle } from './ResizeHandle';
+
+const DEFAULT_HEIGHT = 192;
+const MIN_HEIGHT = 120;
+const MAX_HEIGHT = 420;
 
 /**
  * Roundtable — the bottom lecture panel. Mirrors OpenMAIC's playback
@@ -29,9 +35,21 @@ export function Roundtable({
 }) {
   const shown = lectureSpeech || idleSpeech;
   const isSpeaking = engineState === 'playing';
+  // 面板在下方 → 手柄在它上边缘，往上拖才是变高。
+  const { size: height, dragging, onDragStart } = useDragResize({
+    axis: 'y',
+    initial: DEFAULT_HEIGHT,
+    min: MIN_HEIGHT,
+    max: MAX_HEIGHT,
+    invert: true,
+  });
 
   return (
-    <div className="h-[192px] w-full flex flex-col relative z-10 transition-all duration-300 border-t border-gray-100 dark:border-gray-800 bg-white/60 dark:bg-gray-800/60 backdrop-blur-md">
+    <div
+      style={{ height, transition: dragging ? 'none' : undefined }}
+      className="w-full flex flex-col relative z-10 transition-all duration-300 border-t border-gray-100 dark:border-gray-800 bg-white/60 dark:bg-gray-800/60 backdrop-blur-md"
+    >
+      <ResizeHandle edge="top" onMouseDown={onDragStart} />
       {/* Toolbar strip */}
       {toolbar && <div className="shrink-0">{toolbar}</div>}
 

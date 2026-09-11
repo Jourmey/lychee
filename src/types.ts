@@ -47,6 +47,31 @@ export interface CourseScene {
   order: number;
   /** Per-page narration audio, resolved relative to the demo root. */
   audio?: string;
+  /** 本页在真实课堂视频中的切片区间（由 content/pages.json 注入，秒/毫秒双份）。 */
+  time?: {
+    start: string | null;
+    end: string | null;
+    startMs: number | null;
+    endMs: number | null;
+  };
+  /**
+   * 本页「下一步动画」的触发点（相对本页起点的秒数，递增）。
+   * ITS 的父页面收不到动画步序回执，只能到点盲发 `playAnimationForPage`，故时间点需人工标注。
+   */
+  steps?: number[];
+  /**
+   * 鼠标光标轨迹：老师讲到某处时鼠标移到该点（此后一直停在原地，直到下一个点）。
+   * 光标常驻、不消失 —— 跟真实直播里老师那只鼠标一样。
+   * ITS 跑在 iframe 里、内部元素无法寻址，所以位置用相对**课件画布**（1365×768）的比例（0~1）标注。
+   */
+  highlights?: Array<{
+    /** 鼠标移到该点的时刻，相对本页起点（秒）。 */
+    at: number;
+    /** 相对课件画布的横坐标比例 0~1。 */
+    x: number;
+    /** 相对课件画布的纵坐标比例 0~1。 */
+    y: number;
+  }>;
   /** Slide canvas (only for type === 'slide'). */
   content?: {
     type: 'slide';

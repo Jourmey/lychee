@@ -1,8 +1,9 @@
-import { useState, useCallback, useRef } from 'react';
 import { PanelLeftClose, BookOpen } from 'lucide-react';
 import { SlideCanvas } from '@openmaic/renderer';
 import type { Slide } from '@openmaic/dsl';
 import { cn } from '../lib/cn';
+import { useDragResize } from '../lib/useDragResize';
+import { ResizeHandle } from './ResizeHandle';
 import type { CourseScene } from '../types';
 
 const DEFAULT_WIDTH = 220;
@@ -22,33 +23,12 @@ export function SceneSidebar({
   readonly currentSceneIndex: number;
   readonly onSceneSelect: (index: number) => void;
 }) {
-  const [width, setWidth] = useState(DEFAULT_WIDTH);
-  const isDraggingRef = useRef(false);
-
-  const handleDragStart = useCallback(
-    (e: React.MouseEvent) => {
-      e.preventDefault();
-      isDraggingRef.current = true;
-      const startX = e.clientX;
-      const startWidth = width;
-      const handleMouseMove = (me: MouseEvent) => {
-        const delta = me.clientX - startX;
-        setWidth(Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, startWidth + delta)));
-      };
-      const handleMouseUp = () => {
-        isDraggingRef.current = false;
-        document.removeEventListener('mousemove', handleMouseMove);
-        document.removeEventListener('mouseup', handleMouseUp);
-        document.body.style.cursor = '';
-        document.body.style.userSelect = '';
-      };
-      document.body.style.cursor = 'col-resize';
-      document.body.style.userSelect = 'none';
-      document.addEventListener('mousemove', handleMouseMove);
-      document.addEventListener('mouseup', handleMouseUp);
-    },
-    [width],
-  );
+  const { size: width, dragging, onDragStart } = useDragResize({
+    axis: 'x',
+    initial: DEFAULT_WIDTH,
+    min: MIN_WIDTH,
+    max: MAX_WIDTH,
+  });
 
   const displayWidth = collapsed ? 0 : width;
 
@@ -56,18 +36,11 @@ export function SceneSidebar({
     <div
       style={{
         width: displayWidth,
-        transition: isDraggingRef.current ? 'none' : 'width 0.3s ease',
+        transition: dragging ? 'none' : 'width 0.3s ease',
       }}
       className="bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl border-r border-gray-100 dark:border-gray-800 shadow-[2px_0_24px_rgba(0,0,0,0.02)] flex flex-col shrink-0 z-20 relative overflow-visible"
     >
-      {!collapsed && (
-        <div
-          onMouseDown={handleDragStart}
-          className="absolute right-0 top-0 bottom-0 w-1.5 cursor-col-resize z-50 group hover:bg-purple-400/30 dark:hover:bg-purple-600/30 active:bg-purple-500/40 dark:active:bg-purple-500/40 transition-colors"
-        >
-          <div className="absolute right-0.5 top-1/2 -translate-y-1/2 w-0.5 h-8 rounded-full bg-gray-300 dark:bg-gray-600 group-hover:bg-purple-400 dark:group-hover:bg-purple-500 transition-colors" />
-        </div>
-      )}
+      {!collapsed && <ResizeHandle edge="right" onMouseDown={onDragStart} />}
 
       <div className={cn('flex flex-col w-full h-full overflow-hidden', collapsed && 'hidden')}>
         {/* Logo Header */}

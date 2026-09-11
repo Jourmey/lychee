@@ -14,7 +14,14 @@ import { useCallback, useEffect, useRef, useState } from 'react';
  *   父 → 播放器：pageTurning{page,pageType,speed} / changePageNext / changePagePre /
  *                getCatalogueInfo / onOffLight / setViewScale / playAnimationForPage
  *   播放器 → 父：coursewareLoadingProgress / coursewareLoadError / cwLog / cwError /
- *                getBiJiData / storeCWState
+ *                getBiJiData / storeCWState / cwIsReady
+ *
+ * 「下一步」= ITS 的「动画播放」。父页面发 `{type:'playAnimationForPage', data:{dir:'next'}}`
+ * 即可推进一格。注意是**单向**的：播放器只回报 changeAnimateStatus 这个配置布尔值
+ * （currentAnimateStatus），**不回报当前步序 / 总步数 / 是否有下一步**。因此步序无法观测，
+ * 只能按 content/pages.json 里人工标注的 steps 时间点定时盲发。
+ * 好在本课件 `setConfig.changeAnimateStatus = true`，翻页会自动 resetAllPageAni() 归零，
+ * 所以每页都从第 0 步开始，盲发是可复现的。
  */
 const ITS_PLAYER_URL =
   'https://kjds-qcdn.speiyou.com/webkjdsfiles/af2cc6f76ec34167a7faf1c25b841efb/index.html';
@@ -31,14 +38,36 @@ const ITS_EMBED_PARAMS: Record<string, string> = {
   // devHideToolPanel 会在环境配置合并之后强制把 config.toolPanel 覆盖为 3；
   // 播放器模板仅在 toolPanel 为 1/2/4 时渲染工具栏，3 即完全隐藏。
   devHideToolPanel: 'true',
+  // 课件区点击默认「先推进下一步动画，动画放完再翻页」。这里只关翻页那一步：
+  // devAutoChangePage → setConfig.autoChangePage=false（优先级高于环境配置），
+  // 使 checkoutChangePage("canvas", 空) 不再 changeNextPage，退化成发一条
+  // sendNeedChangePage 请求（本 demo 不响应）。点击仍可推进「下一步」。
+  // autoChangePage 是 autoChangePage 的环境参数（仅 env=2 生效），一并给出兜底。
+  devAutoChangePage: 'false',
+  autoChangePage: 'false',
 };
 
-export function ItsStage({ currentSceneIndex }: { readonly currentSceneIndex: number }) {
+/** 翻页后播放器要滑动动画 + 加载该页资源，这段窗口内发的动画指令会被丢弃。 */
+const PAGE_LOAD_GRACE_MS = 700;
+
+export function ItsStage({
+  currentSceneIndex,
+  firedStepCount,
+}: {
+  readonly currentSceneIndex: number;
+  /** 本页应已触发的「下一步动画」步数，由播放时钟给出；到点补发 next。 */
+  readonly firedStepCount: number;
+}) {
   const frameRef = useRef<HTMLIFrameElement>(null);
   const pageRef = useRef(currentSceneIndex);
   pageRef.current = currentSceneIndex;
   const readyRef = useRef(false);
   const [loaded, setLoaded] = useState(false);
+  /** 本页已发出的动画步数，翻页时归零。 */
+  const sentStepsRef = useRef(0);
+  const graceUntilRef = useRef(0);
+  const firedStepCountRef = useRef(firedStepCount);
+  firedStepCountRef.current = firedStepCount;
 
   /** 跳到指定页。`pageTurning.page` 是 0 基（目录面板发的是 `目录项-1`），与 demo 的场景序号一致。 */
   const sendPage = useCallback((index: number) => {
@@ -57,10 +86,41 @@ export function ItsStage({ currentSceneIndex }: { readonly currentSceneIndex: nu
     return () => window.removeEventListener('message', onMessage);
   }, []);
 
+  /** 推进一格「下一步动画」。盲发：播放器不回报成功与否，也发不坏。 */
+  const sendNextStep = useCallback(() => {
+    frameRef.current?.contentWindow?.postMessage(
+      { type: 'playAnimationForPage', data: { dir: 'next' } },
+      '*',
+    );
+  }, []);
+
+  /** 把「应已触发」但「尚未发出」的步数补齐。 */
+  const flushSteps = useCallback(() => {
+    if (performance.now() < graceUntilRef.current) return;
+    while (sentStepsRef.current < firedStepCountRef.current) {
+      sendNextStep();
+      sentStepsRef.current += 1;
+    }
+  }, [sendNextStep]);
+
   // 跟随 demo 时间轴翻页。
   useEffect(() => {
     sendPage(currentSceneIndex);
   }, [currentSceneIndex, sendPage]);
+
+  // 翻页 → 动画归零。播放器 changeAnimateStatus=true 会自动 resetAllPageAni()，
+  // 这里只重置本地计数，并留一段加载宽限期，避免指令打在还没就绪的页面上。
+  useEffect(() => {
+    sentStepsRef.current = 0;
+    graceUntilRef.current = performance.now() + PAGE_LOAD_GRACE_MS;
+    const timer = window.setTimeout(flushSteps, PAGE_LOAD_GRACE_MS);
+    return () => window.clearTimeout(timer);
+  }, [currentSceneIndex, flushSteps]);
+
+  // 时钟越过新的 step 时间点 → 补发 next。
+  useEffect(() => {
+    flushSteps();
+  }, [firedStepCount, flushSteps]);
 
   // 冷启动兜底：播放器初始化完成前的指令会被忽略，因此加载后短暂重试。
   useEffect(() => {

@@ -1,5 +1,11 @@
 import { ArrowLeft, Download, Moon, Settings, Sun } from 'lucide-react';
 import { cn } from '../lib/cn';
+import { useDragResize } from '../lib/useDragResize';
+import { ResizeHandle } from './ResizeHandle';
+
+const DEFAULT_HEIGHT = 80;
+const MIN_HEIGHT = 56;
+const MAX_HEIGHT = 160;
 
 /**
  * Header — playback top bar. Mirrors OpenMAIC's `Header`: a back arrow + the
@@ -17,8 +23,19 @@ export function Header({
   readonly dark?: boolean;
   readonly onToggleTheme?: () => void;
 }) {
+  const { size: height, onDragStart } = useDragResize({
+    axis: 'y',
+    initial: DEFAULT_HEIGHT,
+    min: MIN_HEIGHT,
+    max: MAX_HEIGHT,
+  });
+
   return (
-    <header className="h-20 px-8 flex items-center justify-between z-10 bg-transparent gap-4">
+    <header
+      style={{ height }}
+      className="relative shrink-0 px-8 flex items-center justify-between z-10 bg-transparent gap-4"
+    >
+      <ResizeHandle edge="bottom" onMouseDown={onDragStart} />
       <div className="flex items-center gap-3 min-w-0 flex-1">
         <button
           onClick={onBack}

@@ -8,7 +8,8 @@
     "build": "vite build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
-    "build-course": "node scripts/build-course.mjs"
+    "build-course": "node scripts/build-course.mjs",
+    "align-transcript": "node scripts/align-transcript.mjs"
   },
   "dependencies": {
     "@openmaic/dsl": "workspace:*",

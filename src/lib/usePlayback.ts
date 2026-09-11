@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Action } from '@openmaic/dsl';
 import type { SlideEffects } from '@openmaic/renderer';
-import type { Course, WhiteboardItem } from '../types';
+import type { Course, CourseScene, WhiteboardItem } from '../types';
 
 export type EngineState = 'idle' | 'playing' | 'paused';
 
@@ -69,6 +69,29 @@ function sceneDuration(timeline: TimedAction[]): number {
   return last.at + estimateActionDuration(last.action);
 }
 
+/**
+ * 该页应停留的秒数 —— 取三者最大：
+ *   1. 动作时间轴的估算时长；
+ *   2. `scene.time` 给出的真实切片区间（来自 content/pages.json）；
+ *   3. 本页音频的真实时长（loadedmetadata 后才知道）。
+ * 保证音频没播完不会被自动翻页。
+ */
+function sceneHoldDuration(
+  scene: CourseScene | null,
+  timeline: TimedAction[],
+  audioDuration: number | null,
+): number {
+  let seconds = sceneDuration(timeline);
+  const t = scene?.time;
+  if (t?.startMs != null && t?.endMs != null && t.endMs > t.startMs) {
+    seconds = Math.max(seconds, (t.endMs - t.startMs) / 1000);
+  }
+  if (audioDuration != null && Number.isFinite(audioDuration)) {
+    seconds = Math.max(seconds, audioDuration);
+  }
+  return seconds;
+}
+
 export interface PlaybackControls {
   engineState: EngineState;
   currentSceneIndex: number;
@@ -86,6 +109,13 @@ export interface PlaybackControls {
   firedCount: number;
   /** Total actions in the current scene. */
   totalActions: number;
+  /** 本页应已触发的「下一步动画」步数（= 已越过的 scene.steps 个数）。 */
+  firedStepCount: number;
+  /**
+   * 鼠标光标当前应处的点（相对**课件画布** 1365×768 的比例 0~1）。
+   * null = 本页没有轨迹数据；渲染层会沿用上一个位置，让光标一直停在那儿（常驻不消失）。
+   */
+  activeHighlight: { x: number; y: number } | null;
   play: () => void;
   pause: () => void;
   togglePlay: () => void;
@@ -152,15 +182,25 @@ export function usePlayback(course: Course): PlaybackControls {
   const [whiteboardItems, setWhiteboardItems] = useState<WhiteboardItem[]>([]);
   const [sceneProgress, setSceneProgress] = useState(0);
   const [firedCount, setFiredCount] = useState(0);
+  const [firedStepCount, setFiredStepCount] = useState(0);
+  const [activeHighlight, setActiveHighlight] = useState<{ x: number; y: number } | null>(null);
 
   const playheadRef = useRef(0);
   const firedRef = useRef<Set<number>>(new Set());
+  const stepCountRef = useRef(0);
+  /** 当前高亮条目的 at 值（作为身份标识），用于避免每帧 setState。 */
+  const highlightKeyRef = useRef<number | null>(null);
   const rafRef = useRef<number | null>(null);
   const lastFrameRef = useRef<number | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  /** 本页音频真实时长（秒），loadedmetadata 后填充；无音频为 null。 */
+  const audioDurationRef = useRef<number | null>(null);
   // Live mirrors so the long-lived rAF loop always reads the current scene.
   const timelineRef = useRef<TimedAction[]>([]);
   const sceneIndexRef = useRef(0);
+  const scenesRef = useRef(scenes);
+  /** 供长生命周期的回调/effect 读取当前播放状态，避免重建 audio 元素。 */
+  const engineStateRef = useRef<EngineState>('idle');
 
   const activeScene = scenes[currentSceneIndex] ?? null;
   const activeActions = useMemo(
@@ -171,6 +211,8 @@ export function usePlayback(course: Course): PlaybackControls {
   const total = timeline.length;
   timelineRef.current = timeline;
   sceneIndexRef.current = currentSceneIndex;
+  scenesRef.current = scenes;
+  engineStateRef.current = engineState;
 
   /** Reset everything for a new scene. */
   const resetForScene = useCallback((index: number) => {
@@ -185,8 +227,12 @@ export function usePlayback(course: Course): PlaybackControls {
     setWhiteboardItems([]);
     setSceneProgress(0);
     setFiredCount(0);
+    setFiredStepCount(0);
+    setActiveHighlight(null);
     playheadRef.current = 0;
     firedRef.current = new Set();
+    stepCountRef.current = 0;
+    highlightKeyRef.current = null;
   }, [scenes]);
 
   /** Apply a single action's visible effects. */
@@ -243,8 +289,12 @@ export function usePlayback(course: Course): PlaybackControls {
       // Read live scene data so navigation/auto-advance never uses a stale closure.
       const timeline = timelineRef.current;
       const total = timeline.length;
-      const totalDuration = sceneDuration(timeline);
       const index = sceneIndexRef.current;
+      const totalDuration = sceneHoldDuration(
+        scenesRef.current[index] ?? null,
+        timeline,
+        audioDurationRef.current,
+      );
 
       let fired = 0;
       for (const item of timeline) {
@@ -255,6 +305,32 @@ export function usePlayback(course: Course): PlaybackControls {
         }
       }
       if (fired > 0) setFiredCount(firedRef.current.size);
+
+      // 「下一步动画」：本页已越过的 steps 时间点个数（ITS 只支持盲发，故由时钟驱动）。
+      const steps = scenesRef.current[index]?.steps;
+      let stepCount = 0;
+      if (steps) while (stepCount < steps.length && steps[stepCount] <= playheadRef.current) stepCount++;
+      if (stepCount !== stepCountRef.current) {
+        stepCountRef.current = stepCount;
+        setFiredStepCount(stepCount);
+      }
+
+      // 鼠标光标：取「已越过」的最后一个轨迹点 —— 光标常驻，到点移过去后停在原地。
+      // 进入本页时尚未到第一个 at 也直接落在第一个点上（避免光标凭空出现）。
+      const highlights = scenesRef.current[index]?.highlights;
+      let activeHl: { x: number; y: number } | null = null;
+      let hlKey: number | null = null;
+      if (highlights && highlights.length > 0) {
+        const t = playheadRef.current;
+        let cur = highlights[0];
+        for (const h of highlights) if (t >= h.at) cur = h;
+        activeHl = { x: cur.x, y: cur.y };
+        hlKey = cur.at;
+      }
+      if (hlKey !== highlightKeyRef.current) {
+        highlightKeyRef.current = hlKey;
+        setActiveHighlight(activeHl);
+      }
 
       const progress = totalDuration > 0 ? Math.min(1, playheadRef.current / totalDuration) : 1;
       setSceneProgress(progress);
@@ -306,18 +382,41 @@ export function usePlayback(course: Course): PlaybackControls {
 
   /** Play the scene's per-page audio best-effort, and stop it when leaving. */
   useEffect(() => {
+    audioDurationRef.current = null;
     const scene = scenes[currentSceneIndex];
     if (!scene?.audio) return;
     const audio = new Audio(scene.audio);
     audioRef.current = audio;
-    audio.play().catch(() => {
-      /* audio is optional — silently ignore missing/failed files */
-    });
+    const onMeta = () => {
+      // 真实时长到手后作为该页停留时长的下限，避免音频没播完就翻页。
+      if (Number.isFinite(audio.duration)) audioDurationRef.current = audio.duration;
+    };
+    audio.addEventListener('loadedmetadata', onMeta);
+    if (engineStateRef.current === 'playing') {
+      audio.play().catch(() => {
+        /* audio is optional — silently ignore missing/failed files */
+      });
+    }
     return () => {
+      audio.removeEventListener('loadedmetadata', onMeta);
       audio.pause();
       audioRef.current = null;
+      audioDurationRef.current = null;
     };
   }, [currentSceneIndex, scenes]);
+
+  /** 播放/暂停与当前页音频保持一致（切页时不重建元素，故单独一个 effect）。 */
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    if (engineState === 'playing') {
+      audio.play().catch(() => {
+        /* autoplay may be blocked; ignore */
+      });
+    } else {
+      audio.pause();
+    }
+  }, [engineState, currentSceneIndex]);
 
   /** Stop the rAF loop and any audio on unmount. */
   useEffect(() => {
@@ -360,6 +459,8 @@ export function usePlayback(course: Course): PlaybackControls {
     sceneProgress,
     firedCount,
     totalActions: total,
+    firedStepCount,
+    activeHighlight,
     play,
     pause,
     togglePlay,
