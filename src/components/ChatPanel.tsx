@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Action } from '@openmaic/dsl';
 import {
   BookOpen,
@@ -208,12 +208,18 @@ export function ChatPanel({
   course,
   currentSceneIndex,
   onSelectScene,
+  activeLine,
+  onSeekLine,
 }: {
   readonly collapsed: boolean;
   readonly onCollapseChange: (collapsed: boolean) => void;
   readonly course: Course;
   readonly currentSceneIndex: number;
   readonly onSelectScene: (index: number) => void;
+  /** 当前播放到第几句（`dialogue` 索引）；-1 = 本页无逐句数据 / 未开始。 */
+  readonly activeLine: number;
+  /** 点击某句 → 跳到该句并继续播放。 */
+  readonly onSeekLine: (index: number) => void;
 }) {
   const [activeTab, setActiveTab] = useState<'lecture' | 'chat'>('chat');
   const [supportInteractive, setSupportInteractive] = useState(false);
@@ -230,10 +236,19 @@ export function ChatPanel({
 
   const agents = useMemo(() => buildAgents(course), [course]);
   // 对话内容取自「当前页」的逐字稿 —— 翻页即切换，和左侧课件 / 右侧笔记保持同步。
-  const turns = course.scenes[currentSceneIndex]?.dialogue ?? [];
+  const scene = course.scenes[currentSceneIndex];
+  const turns = scene?.dialogue ?? [];
+  // 只有逐句配音的页才做「行 ↔ 时间轴」联动：dialogue[i] ↔ lines[i] ↔ timeline[i]。
+  const hasLines = (scene?.lines?.length ?? 0) > 0;
   // 显示真实 ITS 页码：场景按老师翻页顺序排列，序号 ≠ 页码。
-  const currentSceneItsPage =
-    (course.scenes[currentSceneIndex]?.itsPage ?? currentSceneIndex) + 1;
+  const currentSceneItsPage = (scene?.itsPage ?? currentSceneIndex) + 1;
+
+  // 高亮行自动滚入视野（翻页 / 播到下一句时跟随）。
+  const activeTurnRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (activeLine < 0) return;
+    activeTurnRef.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  }, [activeLine]);
 
   const tabCls = (active: boolean) =>
     cn(
@@ -291,7 +306,8 @@ export function ChatPanel({
           {/* 当前页标识 + support-interactive toggle */}
           <div className="shrink-0 flex items-center justify-between gap-2 px-3 pt-2">
             <span className="text-[11px] font-semibold text-gray-400 dark:text-gray-500 truncate">
-              第 {currentSceneItsPage ?? currentSceneIndex + 1} 页 · 课堂对话
+              第 {currentSceneItsPage} 页 · 课堂对话
+              {hasLines && <span className="ml-1 font-normal">· 点击可跳转</span>}
             </span>
             <button
               onClick={() => setSupportInteractive(!supportInteractive)}
@@ -331,11 +347,27 @@ export function ChatPanel({
               turns.map((t, i) => {
                 const agent = agents[t.speaker] ?? agents.student;
                 const isTeacher = agent.isTeacher;
+                const isActive = hasLines && i === activeLine;
                 return (
-                  <div key={i} className={cn('flex gap-2', isTeacher ? 'opacity-80' : '')}>
+                  <div
+                    key={i}
+                    ref={isActive ? activeTurnRef : undefined}
+                    onClick={hasLines ? () => onSeekLine(i) : undefined}
+                    className={cn(
+                      'flex gap-2 rounded-xl -mx-1.5 px-1.5 py-1 transition-colors',
+                      isTeacher ? 'opacity-80' : '',
+                      hasLines && 'cursor-pointer',
+                      isActive
+                        ? 'bg-purple-50/80 dark:bg-purple-950/30 opacity-100'
+                        : hasLines && 'hover:bg-gray-100/60 dark:hover:bg-gray-800/40',
+                    )}
+                  >
                     <AgentAvatar agent={agent} />
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-1.5 mb-0.5">
+                        {isActive && (
+                          <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-purple-500 dark:bg-purple-400 animate-pulse" />
+                        )}
                         <span className="text-[11px] font-bold" style={{ color: agent.color }}>
                           {agent.name}
                         </span>
@@ -347,10 +379,12 @@ export function ChatPanel({
                       </div>
                       <div
                         className={cn(
-                          'rounded-2xl rounded-tl-sm px-3 py-2 text-[13px] leading-relaxed break-words',
+                          'rounded-2xl rounded-tl-sm px-3 py-2 text-[13px] leading-relaxed break-words transition-shadow',
                           isTeacher
                             ? 'bg-purple-500/10 dark:bg-purple-500/15 text-purple-700 dark:text-purple-200'
                             : 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-200',
+                          isActive &&
+                            'ring-1 ring-purple-400/70 dark:ring-purple-500/60 shadow-sm shadow-purple-500/10',
                         )}
                       >
                         {t.text}

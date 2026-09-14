@@ -30,7 +30,9 @@ const pages = its.data.mainCode.pages;
 
 const CANVAS_W = 1365;
 const CANVAS_H = 768;
-const IMG_PREFIX = '/courseware/imgs/';
+// 图片资源默认走本地 public/courseware/imgs/；dataset.config.json 可选给 assetBase
+// （如 OSS 前缀），拼在前面让产物直接指向远端。
+const IMG_PREFIX = `${config.assetBase || ''}/courseware/imgs/`;
 
 /* ---------------------------------------------------------------- helpers */
 

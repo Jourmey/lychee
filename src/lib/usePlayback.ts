@@ -95,22 +95,15 @@ function sceneHoldDuration(
 export interface PlaybackControls {
   engineState: EngineState;
   currentSceneIndex: number;
-  /** 当前讲解文本 — the lecturer line currently being spoken/displayed. */
-  lectureSpeech: string | null;
-  /** 当前讲解气泡的说话人角色 id（双师：`teacher` / `assistant`）。 */
-  lectureSpeaker: string;
-  /** 默认旁白 — first speech line, shown while idle. */
-  idleSpeech: string | null;
+  /**
+   * 右侧逐字稿当前高亮行（`scene.dialogue` 索引）；-1 = 本页无逐句数据 / 尚未开始。
+   * 逐句配音（scene.lines）与 text 覆盖模式下 `dialogue[i]` ↔ `timeline[i]`，索引可直接复用。
+   */
+  activeLine: number;
   /** Active slide effects derived from fired spotlight/laser actions. */
   effects: SlideEffects;
   whiteboardOpen: boolean;
   whiteboardItems: WhiteboardItem[];
-  /** 0..1 progress within the current scene. */
-  sceneProgress: number;
-  /** Number of actions fired in the current scene. */
-  firedCount: number;
-  /** Total actions in the current scene. */
-  totalActions: number;
   /** 本页应已触发的「下一步动画」步数（= 已越过的 scene.steps 个数）。 */
   firedStepCount: number;
   /**
@@ -129,6 +122,8 @@ export interface PlaybackControls {
   goToScene: (index: number) => void;
   nextScene: () => void;
   prevScene: () => void;
+  /** 跳到本页第 index 句并继续播放 —— 供右侧逐字稿点击联动。 */
+  seekToLine: (index: number) => void;
 }
 
 /** Map a `wb_draw_*` action to a whiteboard item for the layer. */
@@ -182,18 +177,11 @@ export function usePlayback(course: Course): PlaybackControls {
 
   const [engineState, setEngineState] = useState<EngineState>('idle');
   const [currentSceneIndex, setCurrentSceneIndex] = useState(0);
-  const [lectureSpeech, setLectureSpeech] = useState<string | null>(null);
-  const [idleSpeech, setIdleSpeech] = useState<string | null>(null);
-  /**
-   * 当前讲解气泡的**说话人角色 id**（双师模式：`teacher` / `assistant`）。
-   * 只在逐句边界（动作触发）时更新，不在每帧 setState。传统数据恒为 `teacher`。
-   */
-  const [lectureSpeaker, setLectureSpeaker] = useState<string>('teacher');
+  /** 右侧逐字稿当前高亮行（timeline / dialogue 索引）；-1 = 未开始 / 本页无逐句数据。 */
+  const [activeLine, setActiveLine] = useState(-1);
   const [effects, setEffects] = useState<SlideEffects>({});
   const [whiteboardOpen, setWhiteboardOpen] = useState(false);
   const [whiteboardItems, setWhiteboardItems] = useState<WhiteboardItem[]>([]);
-  const [sceneProgress, setSceneProgress] = useState(0);
-  const [firedCount, setFiredCount] = useState(0);
   const [firedStepCount, setFiredStepCount] = useState(0);
   const [activeHighlight, setActiveHighlight] = useState<{ x: number; y: number } | null>(null);
   /** 当前应显示的老师批注（逐笔累积）。 */
@@ -214,6 +202,8 @@ export function usePlayback(course: Course): PlaybackControls {
   const highlightKeyRef = useRef<number | null>(null);
   /** 当前已显示的批注条数（作为身份标识），仅变化时才 setState。 */
   const doodleCountRef = useRef(0);
+  /** activeLine 的 ref 镜像，仅变化时才 setState。 */
+  const activeLineRef = useRef(-1);
   const rafRef = useRef<number | null>(null);
   const lastFrameRef = useRef<number | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -256,7 +246,6 @@ export function usePlayback(course: Course): PlaybackControls {
     }
     return buildTimeline(activeActions);
   }, [activeLines, lineDurations, activeActions]);
-  const total = timeline.length;
   lineDurationsRef.current = lineDurations;
   timelineRef.current = timeline;
   sceneIndexRef.current = currentSceneIndex;
@@ -266,20 +255,16 @@ export function usePlayback(course: Course): PlaybackControls {
   /** Reset everything for a new scene. */
   const resetForScene = useCallback((index: number) => {
     const scene = scenes[index];
-    const firstSpeech = scene?.actions.find((a) => a.type === 'speech');
     setCurrentSceneIndex(index);
     sceneIndexRef.current = index;
-    setLectureSpeech(firstSpeech && firstSpeech.type === 'speech' ? firstSpeech.text : null);
-    setIdleSpeech(firstSpeech && firstSpeech.type === 'speech' ? firstSpeech.text : null);
-    setLectureSpeaker(scene?.lines?.[0]?.speaker ?? 'teacher');
     setEffects({});
     setWhiteboardOpen(false);
     setWhiteboardItems([]);
-    setSceneProgress(0);
-    setFiredCount(0);
     setFiredStepCount(0);
     setActiveHighlight(null);
     setActiveDoodles([]);
+    setActiveLine(-1);
+    activeLineRef.current = -1;
     doodleCountRef.current = 0;
     // 本页音频（lineDurations / lineAudios / currentLine）由「本页音频」effect 独占管理，
     // 这里只推进 sceneSession 让它重跑 —— 否则会和 effect 抢所有权（StrictMode 下必然踩）。
@@ -293,9 +278,6 @@ export function usePlayback(course: Course): PlaybackControls {
   /** Apply a single action's visible effects. */
   const applyAction = useCallback((action: Action) => {
     switch (action.type) {
-      case 'speech':
-        setLectureSpeech(action.text);
-        break;
       case 'spotlight':
         setEffects((prev) => ({
           ...prev,
@@ -359,17 +341,24 @@ export function usePlayback(course: Course): PlaybackControls {
           ? lines.reduce((sum, _line, i) => sum + lineDur(i), 0)
           : sceneHoldDuration(scene, timeline, audioDurationRef.current);
 
-      let fired = 0;
       for (const item of timeline) {
         if (item.at <= playheadRef.current && !firedRef.current.has(item.index)) {
           firedRef.current.add(item.index);
           applyAction(item.action);
-          // 说话人身份：逐句模式下 item.index 与 lines 一一对应；传统数据回退 teacher。
-          setLectureSpeaker(lines?.[item.index]?.speaker ?? 'teacher');
-          fired += 1;
         }
       }
-      if (fired > 0) setFiredCount(firedRef.current.size);
+
+      // 右侧逐字稿高亮：取「已越过」的最后一个 timeline 项作为当前句。
+      // 逐句配音 / text 覆盖模式下 dialogue[i] ↔ timeline[i]，索引可直接复用。
+      let lineIdx = -1;
+      for (const item of timeline) {
+        if (item.at <= playheadRef.current) lineIdx = item.index;
+        else break;
+      }
+      if (lineIdx !== activeLineRef.current) {
+        activeLineRef.current = lineIdx;
+        setActiveLine(lineIdx);
+      }
 
       // 逐句配音（TTS）：playhead 落在哪一句，就保证那一句的 <audio> 在播（其余暂停）。
       if (lines && lines.length > 0) {
@@ -440,9 +429,6 @@ export function usePlayback(course: Course): PlaybackControls {
         );
       }
 
-      const progress = totalDuration > 0 ? Math.min(1, playheadRef.current / totalDuration) : 1;
-      setSceneProgress(progress);
-
       const allFired = firedRef.current.size >= total;
       if (allFired && playheadRef.current >= totalDuration + 0.6) {
         // Auto-advance to the next scene when the deck isn't over.
@@ -487,6 +473,60 @@ export function usePlayback(course: Course): PlaybackControls {
   const prevScene = useCallback(() => {
     if (currentSceneIndex > 0) goToScene(currentSceneIndex - 1);
   }, [currentSceneIndex, goToScene]);
+
+  /**
+   * 跳到本页第 index 句并继续播放（右侧逐字稿点击联动）。
+   * 直接推进播放头（seek）而非重放全页：把已触发集合重置成「at <= 目标」的部分并重放其可见效果，
+   * 再把目标句音频定位到句首，交给「播放/暂停」effect 接管。之后 rAF 时钟接管，
+   * 进度 / 光标 / 涂鸦 / 下一步步数会在下一帧按新播放头重算。
+   */
+  const seekToLine = useCallback(
+    (index: number) => {
+      const timeline = timelineRef.current;
+      if (index < 0 || index >= timeline.length) return;
+      const target = timeline[index].at;
+      playheadRef.current = target;
+
+      firedRef.current = new Set();
+      for (const item of timeline) {
+        if (item.at > target) break;
+        firedRef.current.add(item.index);
+        applyAction(item.action);
+      }
+
+      const audios = lineAudiosRef.current;
+      if (audios.length > 0) {
+        audios.forEach((a, i) => {
+          if (i !== index) a.pause();
+        });
+        const line = audios[index];
+        if (line) {
+          try {
+            line.currentTime = 0;
+          } catch {
+            /* metadata 未就绪时忽略 seek */
+          }
+          // 必须在这里直接播：currentLineRef 已置为 index，step() 的分句分支会认为「没换句」而跳过；
+          // 而「播放/暂停」effect 只在 engineState 真正变化时跑 —— 本来就在播时 setEngineState('playing')
+          // 是空操作，不会帮你起播。点击本身是用户手势，play() 不会被拦。
+          line.play().catch(() => {});
+        }
+        currentLineRef.current = index;
+      } else if (audioRef.current) {
+        // 整页音频：按估算时间轴近似跳转。
+        try {
+          audioRef.current.currentTime = target;
+        } catch {
+          /* ignore */
+        }
+      }
+
+      activeLineRef.current = index;
+      setActiveLine(index);
+      setEngineState('playing');
+    },
+    [applyAction],
+  );
 
   /**
    * 本页音频，两种形态：
@@ -639,15 +679,10 @@ export function usePlayback(course: Course): PlaybackControls {
   return {
     engineState,
     currentSceneIndex,
-    lectureSpeech,
-    lectureSpeaker,
-    idleSpeech,
+    activeLine,
     effects,
     whiteboardOpen,
     whiteboardItems,
-    sceneProgress,
-    firedCount,
-    totalActions: total,
     firedStepCount,
     activeHighlight,
     activeDoodles,
@@ -657,5 +692,6 @@ export function usePlayback(course: Course): PlaybackControls {
     goToScene,
     nextScene,
     prevScene,
+    seekToLine,
   };
 }

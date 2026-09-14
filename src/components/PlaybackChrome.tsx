@@ -1,13 +1,11 @@
 import { useCallback, useRef, useState } from 'react';
 import type { Course } from '../types';
 import { usePlayback } from '../lib/usePlayback';
-import { buildAgents } from '../lib/agents';
 import { SceneSidebar } from './SceneSidebar';
 import { Header } from './Header';
 import { ItsStage } from './ItsStage';
 import { CursorHighlight } from './CursorHighlight';
 import { DoodleLayer } from './DoodleLayer';
-import { Roundtable } from './Roundtable';
 import { CanvasToolbar } from './CanvasToolbar';
 import { ChatPanel } from './ChatPanel';
 
@@ -27,9 +25,6 @@ export function PlaybackChrome({
   const stageRef = useRef<HTMLDivElement>(null);
 
   const currentScene = course.scenes[playback.currentSceneIndex] ?? null;
-  // 当前讲解气泡的说话人身份（双师：老师 ↔ AI 助教 逐句切换）。
-  const agents = buildAgents(course);
-  const speakerAgent = agents[playback.lectureSpeaker] ?? agents.teacher;
 
   const toggleFullscreen = useCallback(() => {
     const el = stageRef.current;
@@ -80,39 +75,24 @@ export function PlaybackChrome({
             <CursorHighlight highlight={playback.activeHighlight} />
           </div>
 
-          {/* Roundtable Area */}
-          <div className="shrink-0">
-            <Roundtable
-              toolbar={
-                <div className="px-4 pt-2">
-                  <CanvasToolbar
-                    currentSceneIndex={playback.currentSceneIndex}
-                    scenesCount={course.scenes.length}
-                    engineState={playback.engineState}
-                    whiteboardOpen={playback.whiteboardOpen}
-                    hasWhiteboardContent={hasWhiteboardContent}
-                    sidebarCollapsed={sidebarCollapsed}
-                    onToggleSidebar={() => setSidebarCollapsed(!sidebarCollapsed)}
-                    onPrevSlide={playback.prevScene}
-                    onNextSlide={playback.nextScene}
-                    onPlayPause={playback.togglePlay}
-                    onToggleWhiteboard={() => {}}
-                    onToggleFullscreen={toggleFullscreen}
-                    onToggleChat={() => setChatCollapsed(!chatCollapsed)}
-                    chatCollapsed={chatCollapsed}
-                    isPresenting={isPresenting}
-                  />
-                </div>
-              }
-              teacherName={course.course.teacher?.name ?? '授课教师'}
-              teacherAvatar={course.course.teacher?.avatar}
-              speakerName={speakerAgent.name}
-              speakerAvatar={speakerAgent.avatar}
-              speakerColor={speakerAgent.color}
-              lectureSpeech={playback.lectureSpeech}
-              idleSpeech={playback.idleSpeech}
+          {/* Bottom bar — 画布工具条（原 Roundtable 已拆掉，讲解改由右侧逐字稿承载） */}
+          <div className="shrink-0 border-t border-gray-100 dark:border-gray-800 bg-white/60 dark:bg-gray-800/60 backdrop-blur-md px-4 py-2">
+            <CanvasToolbar
+              currentSceneIndex={playback.currentSceneIndex}
+              scenesCount={course.scenes.length}
               engineState={playback.engineState}
-              onTogglePlay={playback.togglePlay}
+              whiteboardOpen={playback.whiteboardOpen}
+              hasWhiteboardContent={hasWhiteboardContent}
+              sidebarCollapsed={sidebarCollapsed}
+              onToggleSidebar={() => setSidebarCollapsed(!sidebarCollapsed)}
+              onPrevSlide={playback.prevScene}
+              onNextSlide={playback.nextScene}
+              onPlayPause={playback.togglePlay}
+              onToggleWhiteboard={() => {}}
+              onToggleFullscreen={toggleFullscreen}
+              onToggleChat={() => setChatCollapsed(!chatCollapsed)}
+              chatCollapsed={chatCollapsed}
+              isPresenting={isPresenting}
             />
           </div>
         </div>
@@ -124,6 +104,8 @@ export function PlaybackChrome({
           course={course}
           currentSceneIndex={playback.currentSceneIndex}
           onSelectScene={playback.goToScene}
+          activeLine={playback.activeLine}
+          onSeekLine={playback.seekToLine}
         />
       </div>
     </div>
