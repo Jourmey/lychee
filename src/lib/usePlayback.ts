@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Action } from '@openmaic/dsl';
 import type { SlideEffects } from '@openmaic/renderer';
-import type { Course, CourseScene, WhiteboardItem } from '../types';
+import type { ActiveDoodle, Course, CourseScene, WhiteboardItem } from '../types';
 
 export type EngineState = 'idle' | 'playing' | 'paused';
 
@@ -118,6 +118,11 @@ export interface PlaybackControls {
    * null = 本页没有轨迹数据；渲染层会沿用上一个位置，让光标一直停在那儿（常驻不消失）。
    */
   activeHighlight: { x: number; y: number } | null;
+  /**
+   * 当前应显示的老师批注 / 涂鸦（`at <= 播放头` 的全部，逐笔累积、不消失）。
+   * 本页无数据时为空数组。
+   */
+  activeDoodles: ActiveDoodle[];
   play: () => void;
   pause: () => void;
   togglePlay: () => void;
@@ -191,6 +196,8 @@ export function usePlayback(course: Course): PlaybackControls {
   const [firedCount, setFiredCount] = useState(0);
   const [firedStepCount, setFiredStepCount] = useState(0);
   const [activeHighlight, setActiveHighlight] = useState<{ x: number; y: number } | null>(null);
+  /** 当前应显示的老师批注（逐笔累积）。 */
+  const [activeDoodles, setActiveDoodles] = useState<ActiveDoodle[]>([]);
   /** 逐句配音（scene.lines）每句的真实时长（秒）。全部 metadata 到手后填充。 */
   const [lineDurations, setLineDurations] = useState<number[] | null>(null);
   /**
@@ -205,6 +212,8 @@ export function usePlayback(course: Course): PlaybackControls {
   const stepCountRef = useRef(0);
   /** 当前高亮条目的 at 值（作为身份标识），用于避免每帧 setState。 */
   const highlightKeyRef = useRef<number | null>(null);
+  /** 当前已显示的批注条数（作为身份标识），仅变化时才 setState。 */
+  const doodleCountRef = useRef(0);
   const rafRef = useRef<number | null>(null);
   const lastFrameRef = useRef<number | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -270,6 +279,8 @@ export function usePlayback(course: Course): PlaybackControls {
     setFiredCount(0);
     setFiredStepCount(0);
     setActiveHighlight(null);
+    setActiveDoodles([]);
+    doodleCountRef.current = 0;
     // 本页音频（lineDurations / lineAudios / currentLine）由「本页音频」effect 独占管理，
     // 这里只推进 sceneSession 让它重跑 —— 否则会和 effect 抢所有权（StrictMode 下必然踩）。
     setSceneSession((n) => n + 1);
@@ -416,6 +427,17 @@ export function usePlayback(course: Course): PlaybackControls {
       if (hlKey !== highlightKeyRef.current) {
         highlightKeyRef.current = hlKey;
         setActiveHighlight(activeHl);
+      }
+
+      // 老师批注：取「已到点」的全部（逐笔累积、不消失）。只用条数做身份，避免每帧 setState。
+      const doodles = scenesRef.current[index]?.doodles;
+      let doodleCount = 0;
+      if (doodles) while (doodleCount < doodles.length && doodles[doodleCount].at <= playheadRef.current) doodleCount++;
+      if (doodleCount !== doodleCountRef.current) {
+        doodleCountRef.current = doodleCount;
+        setActiveDoodles(
+          doodles ? doodles.slice(0, doodleCount).map((d, i) => ({ ...d, key: `${index}-${i}` })) : [],
+        );
       }
 
       const progress = totalDuration > 0 ? Math.min(1, playheadRef.current / totalDuration) : 1;
@@ -628,6 +650,7 @@ export function usePlayback(course: Course): PlaybackControls {
     totalActions: total,
     firedStepCount,
     activeHighlight,
+    activeDoodles,
     play,
     pause,
     togglePlay,

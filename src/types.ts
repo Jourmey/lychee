@@ -40,6 +40,54 @@ export interface CourseDialogueTurn {
 }
 
 /**
+ * 老师批注 / 涂鸦（手写标注）的一笔。
+ *
+ * ITS 课件跑在 iframe 里、内部元素无法寻址，且老师的涂鸦只存在于录课视频的像素里
+ * （ITS 的 `itsevent.json` 不含涂鸦数据），所以这里用**画布比例坐标**手工标注，
+ * 由 `DoodleLayer` 在 iframe 之上重绘成手写感的笔画。
+ *
+ * 坐标一律相对**课件画布**（ITS 的 1365×768）的比例 0~1；`x/y` 是外接框左上角，
+ * `w/h` 是外接框尺寸。`text` 用 `x/y` 作锚点（左上），此时 `w/h` 可省略（用 0 占位）。
+ */
+export type CourseDoodleKind =
+  | 'ink' // 像素笔迹：从录课视频里抠出来的**真实**老师笔迹透明 PNG（`src`），位置/形状 1:1
+  | 'underline' // 下划线（横穿框底）
+  | 'circle' // 圈选（外接椭圆）
+  | 'strike' // 划掉（框内斜向划线）
+  | 'bracket' // 左侧括号（把一段话括起来）
+  | 'arrow' // 箭头（由 `dir` 决定方向：下/上/右/左）
+  | 'text' // 手写批注文字
+  | 'freehand'; // 任意手绘折线（`points`，归一化坐标）
+
+export interface CourseDoodle {
+  kind: CourseDoodleKind;
+  /** 出现时刻，相对本页起点（秒）；到点后一直留在屏上（像老师真写下的字）。 */
+  at: number;
+  /** 相对课件画布的横坐标比例 0~1（`text` 时是文字锚点，左对齐）。 */
+  x: number;
+  /** 相对课件画布的纵坐标比例 0~1（`text` 时是文字锚点，顶对齐）。 */
+  y: number;
+  /** 外接框宽/高比例 0~1。 */
+  w?: number;
+  h?: number;
+  /** `text` 的批注文字。 */
+  text?: string;
+  /** `text` 的字号（画布 px，缺省 26）。 */
+  fontSize?: number;
+  /** `arrow` 的指向，缺省 `down`。 */
+  dir?: 'down' | 'up' | 'right' | 'left';
+  /** `freehand` 的折线点（相对课件画布的比例 0~1）。 */
+  points?: Array<[number, number]>;
+  /** `ink` 的笔迹图路径（相对 demo 根，如 `/courseware/doodle/data4/scene01-b01.png`）。 */
+  src?: string;
+  /** 笔画颜色，缺省 `#ff3b30`（红笔）。 */
+  color?: string;
+}
+
+/** 老师的一笔批注是否可显示（相对本页起点的秒数）。 */
+export type ActiveDoodle = CourseDoodle & { key: string };
+
+/**
  * 一句配音 —— 文本与音频**一一对应**。
  *
  * 与 `scene.audio`（整页一段音频）互斥，是更细粒度的方案：一页 = 若干句，
@@ -105,6 +153,11 @@ export interface CourseScene {
     /** 相对课件画布的纵坐标比例 0~1。 */
     y: number;
   }>;
+  /**
+   * 老师在本页写下的批注 / 涂鸦（手工从录课视频里标注）。到点逐笔出现、一直留在屏上，
+   * 由 `DoodleLayer` 在 iframe 之上重绘。坐标同 `highlights`：相对课件画布 1365×768 的比例 0~1。
+   */
+  doodles?: CourseDoodle[];
   /** Slide canvas (only for type === 'slide'). */
   content?: {
     type: 'slide';

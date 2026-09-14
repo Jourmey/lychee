@@ -11,6 +11,7 @@
     "build-course": "node scripts/build-course.mjs",
     "align-transcript": "node scripts/align-transcript.mjs",
     "slice-audio": "node scripts/slice-audio.mjs",
+    "doodle-ink": "node scripts/extract-doodle-ink.mjs",
     "slice-keep": "node scripts/slice-keep.mjs",
     "fetch-imgs": "node scripts/fetch-imgs.mjs",
     "tts": "node scripts/tts.mjs",

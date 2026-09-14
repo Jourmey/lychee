@@ -6,6 +6,7 @@ import { SceneSidebar } from './SceneSidebar';
 import { Header } from './Header';
 import { ItsStage } from './ItsStage';
 import { CursorHighlight } from './CursorHighlight';
+import { DoodleLayer } from './DoodleLayer';
 import { Roundtable } from './Roundtable';
 import { CanvasToolbar } from './CanvasToolbar';
 import { ChatPanel } from './ChatPanel';
@@ -75,6 +76,7 @@ export function PlaybackChrome({
               firedStepCount={playback.firedStepCount}
               its={course.its}
             />
+            <DoodleLayer doodles={playback.activeDoodles} />
             <CursorHighlight highlight={playback.activeHighlight} />
           </div>
 

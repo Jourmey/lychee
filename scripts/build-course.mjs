@@ -443,6 +443,36 @@ const scenes = sceneSpecs.map((spec, index) => {
       .sort((a, b) => a.at - b.at);
     if (highlights.length > 0) scene.highlights = highlights;
   }
+  if (Array.isArray(o.doodles)) {
+    // 老师批注 / 涂鸦：at 相对本页起点（秒）；x/y/w/h 为**课件画布**(1365×768)比例 0~1。
+    // 手工从录课视频里标注（ITS 无涂鸦结构化数据）。到点逐笔出现、一直留在屏上。
+    const doodles = o.doodles
+      .map((d) => {
+        const at = toSec(d?.at);
+        if (at == null) return null;
+        const out = { kind: d.kind, at, x: Number(d?.x) || 0, y: Number(d?.y) || 0 };
+        if (d.w != null) out.w = Number(d.w);
+        if (d.h != null) out.h = Number(d.h);
+        if (d.text != null) out.text = String(d.text);
+        if (d.fontSize != null) out.fontSize = Number(d.fontSize);
+        if (d.dir != null) out.dir = String(d.dir);
+        if (d.color != null) out.color = String(d.color);
+        if (d.src != null) out.src = String(d.src);
+        if (Array.isArray(d.points)) {
+          out.points = d.points
+            .map((p) => [Number(p?.[0]), Number(p?.[1])])
+            .filter(([px, py]) => Number.isFinite(px) && Number.isFinite(py));
+        }
+        // freehand 可以只给 points（x/y 缺省 0）；其余笔画必须有可定位的 x/y。
+        const positioned = Number.isFinite(Number(d?.x)) && Number.isFinite(Number(d?.y));
+        const hasPoints = Array.isArray(out.points) && out.points.length >= 2;
+        if (!positioned && !(out.kind === 'freehand' && hasPoints)) return null;
+        return out;
+      })
+      .filter(Boolean)
+      .sort((a, b) => a.at - b.at);
+    if (doodles.length > 0) scene.doodles = doodles;
+  }
   if (Object.keys(o).length) overrideCount += 1;
   return scene;
 });
@@ -468,5 +498,6 @@ fs.writeFileSync(outPath, JSON.stringify(course, null, 2) + '\n');
 
 const elCount = scenes.reduce((n, s) => n + s.content.canvas.elements.length, 0);
 const actCount = scenes.reduce((n, s) => n + s.actions.length, 0);
-console.log(`✓ ${DATASET}/data.json  scenes=${scenes.length}  elements=${elCount}  actions=${actCount}`);
+const doodleCount = scenes.reduce((n, s) => n + (s.doodles?.length ?? 0), 0);
+console.log(`✓ ${DATASET}/data.json  scenes=${scenes.length}  elements=${elCount}  actions=${actCount}  doodles=${doodleCount}`);
 console.log(`  size=${(fs.statSync(outPath).size / 1024 / 1024).toFixed(2)} MB`);
