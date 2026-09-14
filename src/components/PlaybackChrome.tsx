@@ -67,7 +67,9 @@ export function PlaybackChrome({
           >
             <ItsStage
               currentSceneIndex={playback.currentSceneIndex}
+              itsPage={currentScene?.itsPage}
               firedStepCount={playback.firedStepCount}
+              its={course.its}
             />
             <CursorHighlight highlight={playback.activeHighlight} />
           </div>

@@ -88,7 +88,7 @@ export function SceneSidebar({
                           : 'bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400',
                       )}
                     >
-                      {index + 1}
+                      {(scene.itsPage ?? index) + 1}
                     </span>
                     <span
                       className={cn(

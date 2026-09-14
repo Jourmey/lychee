@@ -9,7 +9,11 @@
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
     "build-course": "node scripts/build-course.mjs",
-    "align-transcript": "node scripts/align-transcript.mjs"
+    "align-transcript": "node scripts/align-transcript.mjs",
+    "slice-audio": "node scripts/slice-audio.mjs",
+    "fetch-imgs": "node scripts/fetch-imgs.mjs",
+    "data": "pnpm build-course && pnpm align-transcript && pnpm slice-audio",
+    "data2": "DATASET=data2 node scripts/fetch-imgs.mjs && node scripts/data2-timeline.mjs && node scripts/data2-build-pages.mjs && DATASET=data2 node scripts/build-course.mjs && DATASET=data2 node scripts/slice-audio.mjs --write"
   },
   "dependencies": {
     "@openmaic/dsl": "workspace:*",

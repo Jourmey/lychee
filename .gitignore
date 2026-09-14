@@ -4,5 +4,9 @@ packages
 *.local
 .DS_Store
 .idea
+# 数据集目录：大文件（its-content / transcripts / data.json / alignment / 回放）不进 git，
+# 但逐页手工数据 pages.json 与课程配置 dataset.config.json 必须进 git。
 data/
+data2/
 public/courseware
+public/audio

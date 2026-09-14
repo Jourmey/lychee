@@ -268,6 +268,9 @@ export function ChatPanel({
   const agents = useMemo(() => buildAgents(course), [course]);
   // 对话内容取自「当前页」的逐字稿 —— 翻页即切换，和左侧课件 / 右侧笔记保持同步。
   const turns = course.scenes[currentSceneIndex]?.dialogue ?? [];
+  // 显示真实 ITS 页码：场景按老师翻页顺序排列，序号 ≠ 页码。
+  const currentSceneItsPage =
+    (course.scenes[currentSceneIndex]?.itsPage ?? currentSceneIndex) + 1;
 
   const tabCls = (active: boolean) =>
     cn(
@@ -325,7 +328,7 @@ export function ChatPanel({
           {/* 当前页标识 + support-interactive toggle */}
           <div className="shrink-0 flex items-center justify-between gap-2 px-3 pt-2">
             <span className="text-[11px] font-semibold text-gray-400 dark:text-gray-500 truncate">
-              第 {currentSceneIndex + 1} 页 · 课堂对话
+              第 {currentSceneItsPage ?? currentSceneIndex + 1} 页 · 课堂对话
             </span>
             <button
               onClick={() => setSupportInteractive(!supportInteractive)}

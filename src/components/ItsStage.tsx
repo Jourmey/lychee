@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import type { Course } from '../types';
 
 /**
  * 直接嵌入 ITS 官方播放器，并由本 demo 通过 postMessage 驱动翻页。
@@ -23,15 +24,9 @@ import { useCallback, useEffect, useRef, useState } from 'react';
  * 好在本课件 `setConfig.changeAnimateStatus = true`，翻页会自动 resetAllPageAni() 归零，
  * 所以每页都从第 0 步开始，盲发是可复现的。
  */
-const ITS_PLAYER_URL =
-  'https://kjds-qcdn.speiyou.com/webkjdsfiles/af2cc6f76ec34167a7faf1c25b841efb/index.html';
-const ITS_COURSE_ID = '96e764bfca4a4d7c94337cda8c347273';
-const ITS_PAGE_COUNT = 91;
 
 /** 嵌入参数：关掉播放器自带的底部工具栏（翻页 / 画笔 / 直尺…）与键盘翻页，由 demo 作为唯一主控。 */
 const ITS_EMBED_PARAMS: Record<string, string> = {
-  id: ITS_COURSE_ID,
-  pageCount: String(ITS_PAGE_COUNT),
   line: 'off',
   changePageTool: 'false',
   disableKeyboardEvent: 'true',
@@ -52,15 +47,23 @@ const PAGE_LOAD_GRACE_MS = 700;
 
 export function ItsStage({
   currentSceneIndex,
+  itsPage,
   firedStepCount,
+  its,
 }: {
   readonly currentSceneIndex: number;
+  /** 当前场景对应的**真实 ITS 页码（0 基）**。缺省退回场景序号。 */
+  readonly itsPage?: number;
   /** 本页应已触发的「下一步动画」步数，由播放时钟给出；到点补发 next。 */
   readonly firedStepCount: number;
+  /** ITS 播放器嵌入配置（来自所在数据集的 dataset.config.json → data.json 的 `its`）。 */
+  readonly its?: Course['its'];
 }) {
   const frameRef = useRef<HTMLIFrameElement>(null);
-  const pageRef = useRef(currentSceneIndex);
-  pageRef.current = currentSceneIndex;
+  // 场景顺序可能与 ITS 页码不同（按老师翻页顺序排列、同页可重复），翻页指令用真实页码。
+  const page = itsPage ?? currentSceneIndex;
+  const pageRef = useRef(page);
+  pageRef.current = page;
   const readyRef = useRef(false);
   const [loaded, setLoaded] = useState(false);
   /** 本页已发出的动画步数，翻页时归零。 */
@@ -69,7 +72,7 @@ export function ItsStage({
   const firedStepCountRef = useRef(firedStepCount);
   firedStepCountRef.current = firedStepCount;
 
-  /** 跳到指定页。`pageTurning.page` 是 0 基（目录面板发的是 `目录项-1`），与 demo 的场景序号一致。 */
+  /** 跳到指定页。`pageTurning.page` 是 0 基（目录面板发的是 `目录项-1`），与 ITS 页码一致。 */
   const sendPage = useCallback((index: number) => {
     frameRef.current?.contentWindow?.postMessage(
       { type: 'pageTurning', page: index, pageType: 'normal', speed: 0 },
@@ -103,10 +106,10 @@ export function ItsStage({
     }
   }, [sendNextStep]);
 
-  // 跟随 demo 时间轴翻页。
+  // 跟随 demo 时间轴翻页（发的是真实 ITS 页码）。
   useEffect(() => {
-    sendPage(currentSceneIndex);
-  }, [currentSceneIndex, sendPage]);
+    sendPage(page);
+  }, [page, sendPage]);
 
   // 翻页 → 动画归零。播放器 changeAnimateStatus=true 会自动 resetAllPageAni()，
   // 这里只重置本地计数，并留一段加载宽限期，避免指令打在还没就绪的页面上。
@@ -137,7 +140,21 @@ export function ItsStage({
     return () => window.clearInterval(timer);
   }, [loaded, sendPage]);
 
-  const src = `${ITS_PLAYER_URL}?${new URLSearchParams(ITS_EMBED_PARAMS).toString()}`;
+  const src = its
+    ? `${its.playerUrl}?${new URLSearchParams({
+        ...ITS_EMBED_PARAMS,
+        id: its.courseId,
+        pageCount: String(its.pageCount),
+      }).toString()}`
+    : null;
+
+  if (!src) {
+    return (
+      <div className="w-full h-full flex items-center justify-center bg-white text-gray-500 text-sm">
+        当前数据集未配置 ITS 播放器（缺 `its` 字段）
+      </div>
+    );
+  }
 
   return (
     <iframe

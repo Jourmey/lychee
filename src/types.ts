@@ -45,9 +45,16 @@ export interface CourseScene {
   type: SceneType;
   title: string;
   order: number;
+  /**
+   * 本场景对应 ITS 播放器里的**真实页码（0 基）**。
+   * 场景顺序 ≠ 页码：数据集可以按老师真实的翻页顺序排列场景（跳页、回翻同一页），
+   * 此时同一个 itsPage 会出现多次（同页第二次出现 = 老师回翻，配自己的时间窗/音频/讲解）。
+   * iframe 翻页指令用它，而不是场景序号。缺省时退回场景序号（传统「页码 ↔ 场景一一对应」）。
+   */
+  itsPage?: number;
   /** Per-page narration audio, resolved relative to the demo root. */
   audio?: string;
-  /** 本页在真实课堂视频中的切片区间（由 content/pages.json 注入，秒/毫秒双份）。 */
+  /** 本页在真实课堂视频中的切片区间（由 <dataset>/pages.json 注入，秒/毫秒双份）。 */
   time?: {
     start: string | null;
     end: string | null;
@@ -95,6 +102,18 @@ export interface Course {
       name: string;
       avatar?: string;
     };
+  };
+  /**
+   * ITS 官方播放器嵌入配置（来自 <dataset>/dataset.config.json 的 `its`）。
+   * 课件区用 <iframe> 嵌这个播放器，demo 通过 postMessage 驱动翻页。
+   */
+  its?: {
+    /** ITS 播放器 index.html 地址。 */
+    playerUrl: string;
+    /** ITS 课程 id。 */
+    courseId: string;
+    /** 课件总页数（用于侧栏/翻页边界）。 */
+    pageCount: number;
   };
   scenes: CourseScene[];
 }
