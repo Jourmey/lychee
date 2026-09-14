@@ -1,28 +1,31 @@
 /**
- * build-course.mjs — 把「ITS H5 课件 + 课堂逐字稿」合成为本 demo 的唯一数据源 data/data.json。
+ * build-course.mjs — 把「ITS H5 课件 + 课堂逐字稿」合成为本 demo 的唯一数据源 <DATASET>/data.json。
+ *
+ * 数据集目录默认 `data/`，用环境变量 `DATASET` 切换（见 scripts/lib/dataset.mjs）。
  *
  * 输入：
- *   data/raw/its-content.json   ITS 课件原始内容（91 页，源自内部课件 CDN 的 <id>.json）
- *   data/transcripts.json       课堂逐字稿（带时间戳 / 说话人）
+ *   <DATASET>/raw/its-content.json   ITS 课件原始内容（源自内部课件 CDN 的 <id>.json）
+ *   <DATASET>/transcripts.json       课堂逐字稿（带时间戳 / 说话人）
+ *   <DATASET>/dataset.config.json    课程元信息 + ITS 嵌入配置（可选）
+ *   <DATASET>/pages.json             逐页手工数据（可选）
  * 输出：
- *   data/data.json              Course 结构（见 src/types.ts）：course 元信息 + scenes[]
+ *   <DATASET>/data.json              Course 结构（见 src/types.ts）：course 元信息 + scenes[]
  *
  * 课件每一页 = 画布(1365x768) + 若干 item（txt/pic/shape/table/group…）。本脚本把
  * item 转成 OpenMAIC 的 Slide.elements（text / shape / image），坐标取自 item.posX/posY
  * （绝对定位，group 内为相对坐标，已叠加 group 偏移），尺寸取自 style 的 width/height。
  * 图片资源统一重写到 /courseware/imgs/ 下（已离线下载到 public/）。
  *
- * 重新生成：node scripts/build-course.mjs
+ * 重新生成：DATASET=data node scripts/build-course.mjs
  */
 import fs from 'node:fs';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { DATASET, DS, readJson, loadConfig } from './lib/dataset.mjs';
 
-const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const read = (p) => JSON.parse(fs.readFileSync(path.join(ROOT, p), 'utf8'));
+const config = loadConfig();
 
-const its = read('data/raw/its-content.json');
-const transcripts = read('data/transcripts.json');
+const its = readJson('raw/its-content.json');
+const transcripts = readJson('transcripts.json');
 const pages = its.data.mainCode.pages;
 
 const CANVAS_W = 1365;
@@ -239,17 +242,20 @@ function pageToSlide(page, index) {
 
 const stripTags = (s) => (s || '').replace(/<[^>]+>/g, '').trim();
 
-/** 课件页标题：优先 page.title / note，否则第一个非空文本。 */
-function pageTitle(page, index) {
-  const t = stripTags(page.title) || stripTags(page.note);
+/** 标题清洗：实体空格与空白折叠（课件里标题常带 &nbsp;）。 */
+const cleanTitle = (s) => String(s || '').replace(/&nbsp;/g, ' ').replace(/\s+/g, ' ').trim();
+
+/** 课件页标题：优先 page.title / note，否则第一个非空文本。pageNo 为 1 基的真实 ITS 页码。 */
+function pageTitle(page, pageNo) {
+  const t = cleanTitle(stripTags(page.title)) || cleanTitle(stripTags(page.note));
   if (t) return t.slice(0, 24);
   for (const it of page.items || []) {
     if (it.type === 'txt' || it.type === 'shape') {
-      const plain = stripTags(extractTextHtml(it.content)) || stripTags(it.content);
+      const plain = cleanTitle(stripTags(extractTextHtml(it.content))) || cleanTitle(stripTags(it.content));
       if (plain && plain.length > 1) return plain.slice(0, 24);
     }
   }
-  return `第 ${index + 1} 页`;
+  return `第 ${pageNo} 页`;
 }
 
 /** 按标点切句（保留标点），丢弃空片段。 */
@@ -319,35 +325,148 @@ function buildNarrationByScene(sceneCount) {
   });
 }
 
+/* -------------------------------------------- pages.json → 场景（含顺序） */
+
+/**
+ * <DATASET>/pages.json 是手工维护的逐页数据（进 git），支持两种形态：
+ *
+ * ① 对象（传统，页码↔场景一一对应）：key = 1 基 ITS 页码，场景按页码升序。
+ *    每页可给 { title, start, end, audio, text, steps, highlights }。
+ *
+ * ② 数组（按老师真实翻页顺序）：下标 = 场景顺序，每项多一个 `page` = 1 基 ITS 页码。
+ *    老师会跳页、会回翻，所以**同一页可以出现多次**（各带自己的时间窗/音频/讲解）。
+ *    场景通过 scene.itsPage 记录真实页码 —— iframe 翻页指令用的是它，不是场景序号。
+ *
+ *   - title      → scene.title
+ *   - audio      → scene.audio（usePlayback 切页时播放）
+ *   - text       → string[]，每条 = 一条对话/一条讲解；逐条生成 actions 与 dialogue
+ *   - steps      → string[]，本页「下一步动画」的时间点（相对本页起点 mm:ss / hh:mm:ss），
+ *                  build 时换算成 scene.steps: number[]（秒）
+ *   - highlights → [{at,x,y}]，鼠标光标轨迹。at 同上；x/y 是相对**课件画布**(1365×768)
+ *                  的比例 0~1（ITS 是 iframe，内部元素无法寻址，只能给比例）。
+ *                  光标常驻不消失：到点移过去，停在原地直到下一点
+ *   - start/end  → scene.time（视频切片区间，秒为单位另给 startMs/endMs）
+ *
+ * 生成物 data.json 会被每次重建覆盖，所以手工内容必须留在 <DATASET>/pages.json。
+ */
+const pagesPath = DS('pages.json');
+const overrides = fs.existsSync(pagesPath) ? readJson('pages.json') : {};
+
+const allSpecs = (Array.isArray(overrides)
+  ? overrides.map((o, i) => ({ pageNo: Number(o?.page) || i + 1, o: o || {} }))
+  : pages.map((_, i) => ({ pageNo: i + 1, o: overrides[String(i + 1)] || {} }))
+).filter((s) => {
+  if (pages[s.pageNo - 1]) return true;
+  console.warn(`  ! ${DATASET}/pages.json: 第 ${s.pageNo} 页不存在，已跳过`);
+  return false;
+});
+
+/**
+ * `sceneLimit`（dataset.config.json，可选，正整数）：只保留前 N 个场景。
+ * 用于「屏蔽」还没做完/暂时不看的页 —— 数据（pages.json 的手工内容、切片）原样留着，删掉该字段即恢复。
+ */
+const sceneLimit = Number(config.sceneLimit);
+const sceneSpecs = sceneLimit > 0 ? allSpecs.slice(0, sceneLimit) : allSpecs;
+if (sceneLimit > 0 && allSpecs.length > sceneLimit) {
+  console.log(`  · sceneLimit=${sceneLimit}：保留前 ${sceneLimit} 个场景，屏蔽 ${allSpecs.length - sceneLimit} 个`);
+}
+
+const toMs = (t) => {
+  const m = /^(\d+):(\d{2}):(\d{2})$/.exec(String(t || ''));
+  return m ? (+m[1] * 3600 + +m[2] * 60 + +m[3]) * 1000 : null;
+};
+/** "mm:ss" 或 "hh:mm:ss" → 秒（支持小数秒）。 */
+const toSec = (t) => {
+  const parts = String(t || '').trim().split(':').map(Number);
+  if (parts.length < 2 || parts.length > 3 || parts.some((n) => !Number.isFinite(n))) return null;
+  return parts.reduce((acc, n) => acc * 60 + n, 0);
+};
+
+// 无手工 text 的场景才用这份按比例平摊的兜底讲解，故按「场景数」铺，而不是按 ITS 页数。
+const narration = buildNarrationByScene(sceneSpecs.length);
+
+let overrideCount = 0;
+const scenes = sceneSpecs.map((spec, index) => {
+  const { pageNo, o } = spec;
+  const page = pages[pageNo - 1];
+  const scene = {
+    id: `scene-${index + 1}`,
+    type: 'slide',
+    title: pageTitle(page, pageNo),
+    order: index,
+    /** ITS 播放器里的真实页码（0 基）。场景顺序 ≠ 页码：按老师翻页顺序排列，同页可重复。 */
+    itsPage: pageNo - 1,
+    content: { type: 'slide', schemaVersion: 1, canvas: pageToSlide(page, pageNo - 1) },
+    actions: narration[index].actions,
+    dialogue: narration[index].dialogue,
+  };
+  if (o.title) scene.title = cleanTitle(o.title);
+  if (o.audio) scene.audio = o.audio;
+  // 逐句配音（TTS / 双师版）：text 与 audio 一一对应。给了 lines 就以它为准，
+  // actions/dialogue 也按同一顺序生成，这样讲解气泡与笔记/对话 Tab 零改动即可工作。
+  // `speaker`（角色 id，缺省 teacher）走字段：双师模式下同一页老师(真实录音)/助教(TTS)交错。
+  if (Array.isArray(o.lines)) {
+    const lines = o.lines
+      .map((l) => ({
+        text: String(l?.text ?? '').trim(),
+        audio: String(l?.audio ?? '').trim(),
+        speaker: String(l?.speaker ?? 'teacher').trim() || 'teacher',
+      }))
+      .filter((l) => l.text && l.audio);
+    if (lines.length !== o.lines.length) {
+      console.warn(`  ! 第 ${pageNo} 页有 ${o.lines.length - lines.length} 句缺 text/audio，已跳过`);
+    }
+    scene.lines = lines;
+    scene.actions = lines.map((l, j) => ({ type: 'speech', id: `s${index + 1}-l${j + 1}`, text: l.text }));
+    scene.dialogue = lines.map((l) => ({ speaker: l.speaker, text: l.text }));
+  } else if (Array.isArray(o.text)) {
+    const lines = o.text.filter((t) => typeof t === 'string' && t.trim());
+    scene.actions = lines.map((text, j) => ({ type: 'speech', id: `s${index + 1}-${j + 1}`, text }));
+    scene.dialogue = lines.map((text) => ({ speaker: 'teacher', text }));
+  }
+  const startMs = toMs(o.start);
+  const endMs = toMs(o.end);
+  if (startMs != null || endMs != null) {
+    scene.time = { start: o.start ?? null, end: o.end ?? null, startMs, endMs };
+  }
+  if (Array.isArray(o.steps)) {
+    // 本页「下一步动画」触发点（相对本页起点，秒），必须递增。
+    const steps = o.steps.map(toSec).filter((n) => n != null).sort((a, b) => a - b);
+    if (steps.length > 0) scene.steps = steps;
+  }
+  if (Array.isArray(o.highlights)) {
+    // 鼠标光标轨迹：at 相对本页起点（秒）；x/y 为**课件画布**(1365×768)比例 0~1。
+    // 光标常驻：到点移过去，之后停在原地直到下一点（没有 hold，不消失）。
+    const highlights = o.highlights
+      .map((h) => ({ at: toSec(h.at), x: Number(h.x), y: Number(h.y) }))
+      .filter((h) => h.at != null && Number.isFinite(h.x) && Number.isFinite(h.y))
+      .sort((a, b) => a.at - b.at);
+    if (highlights.length > 0) scene.highlights = highlights;
+  }
+  if (Object.keys(o).length) overrideCount += 1;
+  return scene;
+});
+console.log(`✓ 手工逐页覆盖  ${DATASET}/pages.json  scenes=${overrideCount}${Array.isArray(overrides) ? '（数组形态：按翻页顺序）' : ''}`);
+
 /* ------------------------------------------------------------------- build */
 
-const narration = buildNarrationByScene(pages.length);
-
-const scenes = pages.map((page, index) => ({
-  id: `scene-${index + 1}`,
-  type: 'slide',
-  title: pageTitle(page, index),
-  order: index,
-  content: { type: 'slide', schemaVersion: 1, canvas: pageToSlide(page, index) },
-  actions: narration[index].actions,
-  dialogue: narration[index].dialogue,
-}));
-
 const course = {
-  version: '0.2',
+  version: config.course?.version ?? '0.2',
   course: {
-    id: 'lychee-its-gu-wen',
-    title: '庭前絮语解文言 · 古文阅读之山水小品进阶',
-    subtitle: '快乐文言文 ·《记承天寺夜游》《答谢中书书》',
-    teacher: { name: '何晓琳', avatar: '/avatars/teacher.svg' },
+    id: config.course?.id ?? DATASET,
+    title: config.course?.title ?? DATASET,
+    subtitle: config.course?.subtitle,
+    teacher: config.course?.teacher,
   },
+  /** demo 用 iframe 嵌 ITS 官方播放器所需的配置（来自 <DATASET>/dataset.config.json）。 */
+  its: config.its,
   scenes,
 };
 
-const outPath = path.join(ROOT, 'data/data.json');
+const outPath = DS('data.json');
 fs.writeFileSync(outPath, JSON.stringify(course, null, 2) + '\n');
 
 const elCount = scenes.reduce((n, s) => n + s.content.canvas.elements.length, 0);
 const actCount = scenes.reduce((n, s) => n + s.actions.length, 0);
-console.log(`✓ data/data.json  scenes=${scenes.length}  elements=${elCount}  actions=${actCount}`);
+console.log(`✓ ${DATASET}/data.json  scenes=${scenes.length}  elements=${elCount}  actions=${actCount}`);
 console.log(`  size=${(fs.statSync(outPath).size / 1024 / 1024).toFixed(2)} MB`);

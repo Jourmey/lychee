@@ -8,5 +8,7 @@ packages
 # 但逐页手工数据 pages.json 与课程配置 dataset.config.json 必须进 git。
 data/
 data2/
+data3/
+data4/
 public/courseware
 public/audio

@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import { cn } from '../lib/cn';
 import { useDragResize } from '../lib/useDragResize';
+import { buildAgents, type Agent } from '../lib/agents';
 import { ResizeHandle } from './ResizeHandle';
 import type { Course } from '../types';
 
@@ -24,44 +25,6 @@ const MAX_WIDTH = 720;
  * example turns so the shell reads as a faithful 1:1 replica. The drawer has
  * two tabs (「笔记」/「对话」) and defaults to dark with the panel expanded.
  */
-
-/** Agent identity + accent color (mirrors OpenMAIC's role colors). */
-interface Agent {
-  id: string;
-  name: string;
-  role?: string;
-  color: string; // ring / text accent
-  avatarBg: string; // gradient bg
-  avatar?: string; // 默认头像图（public/avatars/）；无则退回姓名首字
-  isTeacher?: boolean;
-}
-
-/**
- * 教室里的两种角色：主讲老师（名字/头像取自课程元信息）+ 学生。
- * 逐字稿里的 SpeakerId 已在 scripts/build-course.mjs 归一到 teacher / student，
- * 因此这里只需按角色取到身份与配色。
- */
-function buildAgents(course: Course): Record<string, Agent> {
-  return {
-    teacher: {
-      id: 'teacher',
-      name: course.course.teacher?.name ?? '授课教师',
-      role: '老师',
-      color: '#8b5cf6',
-      avatarBg: 'from-purple-500 to-indigo-600',
-      avatar: course.course.teacher?.avatar ?? '/avatars/teacher.svg',
-      isTeacher: true,
-    },
-    student: {
-      id: 'student',
-      name: '同学',
-      role: '学生',
-      color: '#60a5fa',
-      avatarBg: 'from-blue-500 to-sky-600',
-      avatar: '/avatars/student1.svg',
-    },
-  };
-}
 
 /** Inline action chips shown in the lecture notes (mirrors OpenMAIC). */
 const ACTION_ICON_ONLY: Record<string, { Icon: typeof Flashlight; style: string }> = {

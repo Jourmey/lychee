@@ -39,6 +39,26 @@ export interface CourseDialogueTurn {
   text: string;
 }
 
+/**
+ * 一句配音 —— 文本与音频**一一对应**。
+ *
+ * 与 `scene.audio`（整页一段音频）互斥，是更细粒度的方案：一页 = 若干句，
+ * 每句一个音频文件，播放时逐句顺序播、气泡文本跟着当前句走。
+ * 时长以音频**真实时长**为准（不再依赖课堂视频的时间窗）。
+ */
+export interface CourseSceneLine {
+  text: string;
+  /** 音频路径，相对 demo 根（如 `/audio/data3/s01-l01.mp3`）。 */
+  audio: string;
+  /**
+   * 说话人**角色 id**，缺省 `teacher`。双师模式下同一页会有 `teacher`（真实录音）
+   * 与 `assistant`（AI 助教 TTS）交错；UI 侧按 id 映射到名字/头像/配色
+   * （见 `src/lib/agents.ts`）。身份标记走字段而非文本前缀，方便后续扩展。
+   */
+  speaker?: string;
+}
+
+
 /** A scene as authored in data.json. Only 'slide' scenes are rendered by the demo. */
 export interface CourseScene {
   id: string;
@@ -54,6 +74,12 @@ export interface CourseScene {
   itsPage?: number;
   /** Per-page narration audio, resolved relative to the demo root. */
   audio?: string;
+  /**
+   * 逐句配音（TTS 版数据用）。给了它就**同时**驱动时间轴与讲解气泡：
+   * 时间轴 = 各句音频真实时长依次累加，气泡文本 = 当前正在播的那句。
+   * `actions` / `dialogue` 仍由 build-course 按同样的句子顺序生成，UI 无需分叉。
+   */
+  lines?: CourseSceneLine[];
   /** 本页在真实课堂视频中的切片区间（由 <dataset>/pages.json 注入，秒/毫秒双份）。 */
   time?: {
     start: string | null;

@@ -97,6 +97,8 @@ export interface PlaybackControls {
   currentSceneIndex: number;
   /** 当前讲解文本 — the lecturer line currently being spoken/displayed. */
   lectureSpeech: string | null;
+  /** 当前讲解气泡的说话人角色 id（双师：`teacher` / `assistant`）。 */
+  lectureSpeaker: string;
   /** 默认旁白 — first speech line, shown while idle. */
   idleSpeech: string | null;
   /** Active slide effects derived from fired spotlight/laser actions. */
@@ -177,6 +179,11 @@ export function usePlayback(course: Course): PlaybackControls {
   const [currentSceneIndex, setCurrentSceneIndex] = useState(0);
   const [lectureSpeech, setLectureSpeech] = useState<string | null>(null);
   const [idleSpeech, setIdleSpeech] = useState<string | null>(null);
+  /**
+   * 当前讲解气泡的**说话人角色 id**（双师模式：`teacher` / `assistant`）。
+   * 只在逐句边界（动作触发）时更新，不在每帧 setState。传统数据恒为 `teacher`。
+   */
+  const [lectureSpeaker, setLectureSpeaker] = useState<string>('teacher');
   const [effects, setEffects] = useState<SlideEffects>({});
   const [whiteboardOpen, setWhiteboardOpen] = useState(false);
   const [whiteboardItems, setWhiteboardItems] = useState<WhiteboardItem[]>([]);
@@ -184,6 +191,14 @@ export function usePlayback(course: Course): PlaybackControls {
   const [firedCount, setFiredCount] = useState(0);
   const [firedStepCount, setFiredStepCount] = useState(0);
   const [activeHighlight, setActiveHighlight] = useState<{ x: number; y: number } | null>(null);
+  /** 逐句配音（scene.lines）每句的真实时长（秒）。全部 metadata 到手后填充。 */
+  const [lineDurations, setLineDurations] = useState<number[] | null>(null);
+  /**
+   * 场景复位计数。resetForScene 每次调用都 +1，用来让「本页音频」effect 重新跑一遍。
+   * 只靠 currentSceneIndex 不够：goToScene(当前页) 时 index 不变、effect 不会重跑，
+   * 且 StrictMode 下 resetForScene(0) 会在 effect 建好 <audio> 之后把 ref 清空。
+   */
+  const [sceneSession, setSceneSession] = useState(0);
 
   const playheadRef = useRef(0);
   const firedRef = useRef<Set<number>>(new Set());
@@ -195,6 +210,12 @@ export function usePlayback(course: Course): PlaybackControls {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   /** 本页音频真实时长（秒），loadedmetadata 后填充；无音频为 null。 */
   const audioDurationRef = useRef<number | null>(null);
+  /** 逐句配音的 <audio> 元素（与 scene.lines 同序）。 */
+  const lineAudiosRef = useRef<HTMLAudioElement[]>([]);
+  /** lineDurations 的 ref 镜像，供长生命周期的 rAF 回调读取。 */
+  const lineDurationsRef = useRef<number[] | null>(null);
+  /** 当前正在播第几句（-1 = 尚未确定）。 */
+  const currentLineRef = useRef(-1);
   // Live mirrors so the long-lived rAF loop always reads the current scene.
   const timelineRef = useRef<TimedAction[]>([]);
   const sceneIndexRef = useRef(0);
@@ -207,8 +228,27 @@ export function usePlayback(course: Course): PlaybackControls {
     () => (activeScene ? activeScene.actions : []),
     [activeScene],
   );
-  const timeline = useMemo(() => buildTimeline(activeActions), [activeActions]);
+  const activeLines = activeScene?.lines ?? null;
+  /**
+   * 本页时间轴。
+   * - 逐句配音（scene.lines）：每句一个 speech 动作，`at` = 前面各句**真实时长**的累加。
+   *   时长未到手时先用字数估算占位，metadata 到达后 timeline 重建。
+   * - 传统：按 actions 的 `at` / 估算铺开。
+   */
+  const timeline = useMemo(() => {
+    if (activeLines && activeLines.length > 0) {
+      let acc = 0;
+      return activeLines.map((line, i) => {
+        const at = acc;
+        const dur = lineDurations?.[i];
+        acc += dur != null && dur > 0 ? dur : Math.max(1, Math.min(12, line.text.length / 5));
+        return { action: { type: 'speech', id: `line-${i}`, text: line.text } as Action, at, index: i };
+      });
+    }
+    return buildTimeline(activeActions);
+  }, [activeLines, lineDurations, activeActions]);
   const total = timeline.length;
+  lineDurationsRef.current = lineDurations;
   timelineRef.current = timeline;
   sceneIndexRef.current = currentSceneIndex;
   scenesRef.current = scenes;
@@ -222,6 +262,7 @@ export function usePlayback(course: Course): PlaybackControls {
     sceneIndexRef.current = index;
     setLectureSpeech(firstSpeech && firstSpeech.type === 'speech' ? firstSpeech.text : null);
     setIdleSpeech(firstSpeech && firstSpeech.type === 'speech' ? firstSpeech.text : null);
+    setLectureSpeaker(scene?.lines?.[0]?.speaker ?? 'teacher');
     setEffects({});
     setWhiteboardOpen(false);
     setWhiteboardItems([]);
@@ -229,6 +270,9 @@ export function usePlayback(course: Course): PlaybackControls {
     setFiredCount(0);
     setFiredStepCount(0);
     setActiveHighlight(null);
+    // 本页音频（lineDurations / lineAudios / currentLine）由「本页音频」effect 独占管理，
+    // 这里只推进 sceneSession 让它重跑 —— 否则会和 effect 抢所有权（StrictMode 下必然踩）。
+    setSceneSession((n) => n + 1);
     playheadRef.current = 0;
     firedRef.current = new Set();
     stepCountRef.current = 0;
@@ -290,21 +334,63 @@ export function usePlayback(course: Course): PlaybackControls {
       const timeline = timelineRef.current;
       const total = timeline.length;
       const index = sceneIndexRef.current;
-      const totalDuration = sceneHoldDuration(
-        scenesRef.current[index] ?? null,
-        timeline,
-        audioDurationRef.current,
-      );
+      const scene = scenesRef.current[index] ?? null;
+      /** 逐句配音场景：每句时长取真实音频时长，未到手时先按字数估算。 */
+      const lines = scene?.lines;
+      const lineDurs = lineDurationsRef.current;
+      const lineDur = (i: number) => {
+        const d = lineDurs?.[i];
+        if (d != null && d > 0) return d;
+        return Math.max(1, Math.min(12, (lines?.[i]?.text.length ?? 0) / 5));
+      };
+      const totalDuration =
+        lines && lines.length > 0
+          ? lines.reduce((sum, _line, i) => sum + lineDur(i), 0)
+          : sceneHoldDuration(scene, timeline, audioDurationRef.current);
 
       let fired = 0;
       for (const item of timeline) {
         if (item.at <= playheadRef.current && !firedRef.current.has(item.index)) {
           firedRef.current.add(item.index);
           applyAction(item.action);
+          // 说话人身份：逐句模式下 item.index 与 lines 一一对应；传统数据回退 teacher。
+          setLectureSpeaker(lines?.[item.index]?.speaker ?? 'teacher');
           fired += 1;
         }
       }
       if (fired > 0) setFiredCount(firedRef.current.size);
+
+      // 逐句配音（TTS）：playhead 落在哪一句，就保证那一句的 <audio> 在播（其余暂停）。
+      if (lines && lines.length > 0) {
+        const t = playheadRef.current;
+        let cur = 0;
+        let curStart = 0;
+        let acc = 0;
+        for (let i = 0; i < lines.length; i++) {
+          if (t >= acc) {
+            cur = i;
+            curStart = acc;
+          } else break;
+          acc += lineDur(i);
+        }
+        if (cur !== currentLineRef.current) {
+          const prev = lineAudiosRef.current[currentLineRef.current];
+          if (prev) prev.pause();
+          const next = lineAudiosRef.current[cur];
+          if (next) {
+            const offset = t - curStart;
+            if (offset > 0.3) {
+              try {
+                next.currentTime = offset;
+              } catch {
+                /* metadata 未就绪时忽略 seek */
+              }
+            }
+            if (engineStateRef.current === 'playing') next.play().catch(() => {});
+          }
+          currentLineRef.current = cur;
+        }
+      }
 
       // 「下一步动画」：本页已越过的 steps 时间点个数（ITS 只支持盲发，故由时钟驱动）。
       const steps = scenesRef.current[index]?.steps;
@@ -380,10 +466,52 @@ export function usePlayback(course: Course): PlaybackControls {
     if (currentSceneIndex > 0) goToScene(currentSceneIndex - 1);
   }, [currentSceneIndex, goToScene]);
 
-  /** Play the scene's per-page audio best-effort, and stop it when leaving. */
+  /**
+   * 本页音频，两种形态：
+   *  - 逐句配音（scene.lines）：每句一个 <audio>，按时间轴依次播（切句在 step 里做）。
+   *  - 传统：整页一段音频（scene.audio）。
+   * 离开本页时全部暂停。
+   */
   useEffect(() => {
     audioDurationRef.current = null;
     const scene = scenes[currentSceneIndex];
+
+    const lines = scene?.lines;
+
+    if (lines && lines.length > 0) {
+      const audios = lines.map((l) => new Audio(l.audio));
+      lineAudiosRef.current = audios;
+      currentLineRef.current = 0;
+      let cancelled = false;
+      const durations = new Array(lines.length).fill(0);
+      let loaded = 0;
+      // 全部 metadata 到手后一次性填 lineDurations —— 时间轴按真实时长重铺。
+      const handlers = audios.map((a, i) => {
+        const onMeta = () => {
+          if (cancelled) return;
+          if (Number.isFinite(a.duration)) durations[i] = a.duration;
+          loaded += 1;
+          if (loaded === lines.length) setLineDurations(durations.slice());
+        };
+        a.addEventListener('loadedmetadata', onMeta);
+        return onMeta;
+      });
+      if (engineStateRef.current === 'playing') audios[0].play().catch(() => {});
+      return () => {
+        cancelled = true;
+        audios.forEach((a, i) => {
+          a.removeEventListener('loadedmetadata', handlers[i]);
+          a.pause();
+        });
+        lineAudiosRef.current = [];
+        currentLineRef.current = -1;
+        setLineDurations(null);
+      };
+    }
+
+    lineAudiosRef.current = [];
+    currentLineRef.current = -1;
+    setLineDurations(null);
     if (!scene?.audio) return;
     const audio = new Audio(scene.audio);
     audioRef.current = audio;
@@ -403,10 +531,22 @@ export function usePlayback(course: Course): PlaybackControls {
       audioRef.current = null;
       audioDurationRef.current = null;
     };
-  }, [currentSceneIndex, scenes]);
+  }, [sceneSession, currentSceneIndex, scenes]);
 
   /** 播放/暂停与当前页音频保持一致（切页时不重建元素，故单独一个 effect）。 */
   useEffect(() => {
+    const lineAudios = lineAudiosRef.current;
+    if (lineAudios.length > 0) {
+      if (engineState === 'playing') {
+        const cur = lineAudios[currentLineRef.current] ?? lineAudios[0];
+        cur?.play().catch(() => {
+          /* autoplay may be blocked; ignore */
+        });
+      } else {
+        lineAudios.forEach((a) => a.pause());
+      }
+      return;
+    }
     const audio = audioRef.current;
     if (!audio) return;
     if (engineState === 'playing') {
@@ -418,11 +558,37 @@ export function usePlayback(course: Course): PlaybackControls {
     }
   }, [engineState, currentSceneIndex]);
 
+  /**
+   * 自动播放策略：没有用户手势时 `play()` 会被浏览器以 `NotAllowedError` 拒绝，
+   * 页面上线即自动播的 demo 必然踩到。用户第一次点/按键时把当前句补播上。
+   * （必须挂在 document 的捕获阶段：手势回调里同步调 play 才被认作「用户触发」。）
+   */
+  useEffect(() => {
+    const resume = () => {
+      if (engineStateRef.current !== 'playing') return;
+      const line = lineAudiosRef.current[currentLineRef.current] ?? lineAudiosRef.current[0];
+      if (line) {
+        if (line.paused) line.play().catch(() => {});
+        return;
+      }
+      const audio = audioRef.current;
+      if (audio?.paused) audio.play().catch(() => {});
+    };
+    const opts = { capture: true } as const;
+    document.addEventListener('pointerdown', resume, opts);
+    document.addEventListener('keydown', resume, opts);
+    return () => {
+      document.removeEventListener('pointerdown', resume, opts);
+      document.removeEventListener('keydown', resume, opts);
+    };
+  }, []);
+
   /** Stop the rAF loop and any audio on unmount. */
   useEffect(() => {
     return () => {
       if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
       audioRef.current?.pause();
+      lineAudiosRef.current.forEach((a) => a.pause());
     };
   }, []);
 
@@ -452,6 +618,7 @@ export function usePlayback(course: Course): PlaybackControls {
     engineState,
     currentSceneIndex,
     lectureSpeech,
+    lectureSpeaker,
     idleSpeech,
     effects,
     whiteboardOpen,

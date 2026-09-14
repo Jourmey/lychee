@@ -64,7 +64,8 @@ export function ItsStage({
   const page = itsPage ?? currentSceneIndex;
   const pageRef = useRef(page);
   pageRef.current = page;
-  const readyRef = useRef(false);
+  /** 播放器回报的当前页（`pageChanged.info`，0 基，与 pageTurning.page 同一套）；null = 尚未收到过。 */
+  const ackPageRef = useRef<number | null>(null);
   const [loaded, setLoaded] = useState(false);
   /** 本页已发出的动画步数，翻页时归零。 */
   const sentStepsRef = useRef(0);
@@ -80,10 +81,12 @@ export function ItsStage({
     );
   }, []);
 
-  // 播放器就绪后会主动向父页面发消息；收到即视为可接收控制指令。
+  // 记录播放器回报的当前页，供下面的翻页闭环判断「到底到没到位」。
   useEffect(() => {
     const onMessage = (e: MessageEvent) => {
-      if (e.source === frameRef.current?.contentWindow) readyRef.current = true;
+      if (e.source !== frameRef.current?.contentWindow) return;
+      const d = e.data as { type?: string; info?: unknown } | null;
+      if (d?.type === 'pageChanged' && Number.isFinite(Number(d.info))) ackPageRef.current = Number(d.info);
     };
     window.addEventListener('message', onMessage);
     return () => window.removeEventListener('message', onMessage);
@@ -125,20 +128,19 @@ export function ItsStage({
     flushSteps();
   }, [firedStepCount, flushSteps]);
 
-  // 冷启动兜底：播放器初始化完成前的指令会被忽略，因此加载后短暂重试。
+  // 冷启动兜底：播放器初始化完成前的指令会被忽略，且它启动时会自说自话地落到第 1 页。
+  // 因此加载后持续重发目标页，直到 `pageChanged.info` 回报「已到目标页」才停。
   useEffect(() => {
     if (!loaded) return;
-    let tries = 0;
     const timer = window.setInterval(() => {
-      if (readyRef.current || tries >= 20) {
+      if (ackPageRef.current === pageRef.current) {
         window.clearInterval(timer);
         return;
       }
-      tries += 1;
       sendPage(pageRef.current);
-    }, 400);
+    }, 300);
     return () => window.clearInterval(timer);
-  }, [loaded, sendPage]);
+  }, [loaded, sendPage, page]);
 
   const src = its
     ? `${its.playerUrl}?${new URLSearchParams({

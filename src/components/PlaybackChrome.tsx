@@ -1,6 +1,7 @@
 import { useCallback, useRef, useState } from 'react';
 import type { Course } from '../types';
 import { usePlayback } from '../lib/usePlayback';
+import { buildAgents } from '../lib/agents';
 import { SceneSidebar } from './SceneSidebar';
 import { Header } from './Header';
 import { ItsStage } from './ItsStage';
@@ -25,6 +26,9 @@ export function PlaybackChrome({
   const stageRef = useRef<HTMLDivElement>(null);
 
   const currentScene = course.scenes[playback.currentSceneIndex] ?? null;
+  // 当前讲解气泡的说话人身份（双师：老师 ↔ AI 助教 逐句切换）。
+  const agents = buildAgents(course);
+  const speakerAgent = agents[playback.lectureSpeaker] ?? agents.teacher;
 
   const toggleFullscreen = useCallback(() => {
     const el = stageRef.current;
@@ -100,6 +104,9 @@ export function PlaybackChrome({
               }
               teacherName={course.course.teacher?.name ?? '授课教师'}
               teacherAvatar={course.course.teacher?.avatar}
+              speakerName={speakerAgent.name}
+              speakerAvatar={speakerAgent.avatar}
+              speakerColor={speakerAgent.color}
               lectureSpeech={playback.lectureSpeech}
               idleSpeech={playback.idleSpeech}
               engineState={playback.engineState}

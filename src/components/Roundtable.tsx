@@ -19,6 +19,9 @@ export function Roundtable({
   toolbar,
   teacherName,
   teacherAvatar,
+  speakerName,
+  speakerAvatar,
+  speakerColor,
   lectureSpeech,
   idleSpeech,
   engineState,
@@ -28,6 +31,10 @@ export function Roundtable({
   readonly teacherName: string;
   /** 教师头像（可选）——有则用图片，无则退回内置图标。 */
   readonly teacherAvatar?: string;
+  /** 当前讲解气泡的说话人（双师：老师 / AI 助教）。缺省回退老师。 */
+  readonly speakerName?: string;
+  readonly speakerAvatar?: string;
+  readonly speakerColor?: string;
   readonly lectureSpeech: string | null;
   readonly idleSpeech: string | null;
   readonly engineState: 'idle' | 'playing' | 'paused';
@@ -35,6 +42,9 @@ export function Roundtable({
 }) {
   const shown = lectureSpeech || idleSpeech;
   const isSpeaking = engineState === 'playing';
+  const bubbleName = speakerName ?? teacherName;
+  const bubbleAvatar = speakerAvatar ?? teacherAvatar;
+  const bubbleColor = speakerColor ?? '#8b5cf6';
   // 面板在下方 → 手柄在它上边缘，往上拖才是变高。
   const { size: height, dragging, onDragStart } = useDragResize({
     axis: 'y',
@@ -111,11 +121,11 @@ export function Roundtable({
                     onClick={onTogglePlay}
                     className="relative px-4 pt-2 pb-3 rounded-2xl text-[15px] leading-relaxed transition-all border w-[min(420px,calc(100%-3rem))] bg-white dark:bg-gray-800 border-gray-100 dark:border-gray-700 text-gray-700 dark:text-gray-200 rounded-bl-sm shadow-sm hover:shadow-md cursor-pointer"
                   >
-                    {/* Teacher avatar corner */}
+                    {/* Speaker avatar corner（双师：老师说老师、助教说助教） */}
                     <div className="absolute -top-2.5 -left-2.5 z-20 pointer-events-none select-none">
                       <div className="w-6 h-6 rounded-full overflow-hidden border-2 border-purple-200 dark:border-purple-700 shadow-sm flex items-center justify-center bg-purple-50 dark:bg-purple-900/30">
-                        {teacherAvatar ? (
-                          <img src={teacherAvatar} alt={teacherName} className="w-full h-full object-cover" />
+                        {bubbleAvatar ? (
+                          <img src={bubbleAvatar} alt={bubbleName} className="w-full h-full object-cover" />
                         ) : (
                           <BookOpen className="w-3.5 h-3.5 text-purple-500 dark:text-purple-300" />
                         )}
@@ -124,8 +134,11 @@ export function Roundtable({
 
                     <div className="overflow-y-auto">
                       <div className="flex items-center gap-1 mb-0.5">
-                        <span className="text-[10px] font-semibold text-gray-400 dark:text-gray-500 truncate">
-                          {teacherName}
+                        <span
+                          className="text-[10px] font-semibold truncate"
+                          style={{ color: bubbleColor }}
+                        >
+                          {bubbleName}
                         </span>
                       </div>
                       <p className="whitespace-pre-wrap break-words">{shown}</p>

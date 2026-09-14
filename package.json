@@ -11,9 +11,13 @@
     "build-course": "node scripts/build-course.mjs",
     "align-transcript": "node scripts/align-transcript.mjs",
     "slice-audio": "node scripts/slice-audio.mjs",
+    "slice-keep": "node scripts/slice-keep.mjs",
     "fetch-imgs": "node scripts/fetch-imgs.mjs",
+    "tts": "node scripts/tts.mjs",
     "data": "pnpm build-course && pnpm align-transcript && pnpm slice-audio",
-    "data2": "DATASET=data2 node scripts/fetch-imgs.mjs && node scripts/data2-timeline.mjs && node scripts/data2-build-pages.mjs && DATASET=data2 node scripts/build-course.mjs && DATASET=data2 node scripts/slice-audio.mjs --write"
+    "data2": "DATASET=data2 node scripts/fetch-imgs.mjs && node scripts/data2-timeline.mjs && node scripts/data2-build-pages.mjs && DATASET=data2 node scripts/build-course.mjs && DATASET=data2 node scripts/slice-audio.mjs --write",
+    "data3": "DATASET=data3 node scripts/fetch-imgs.mjs && DATASET=data3 node scripts/tts-pages.mjs && DATASET=data3 node scripts/build-course.mjs",
+    "data4": "DATASET=data4 node scripts/build-course.mjs"
   },
   "dependencies": {
     "@openmaic/dsl": "workspace:*",
