@@ -1,6 +1,7 @@
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Course } from '../types';
 import { usePlayback } from '../lib/usePlayback';
+import { writeProgress } from '../lib/progress';
 import { buildAgents } from '../lib/agents';
 import { SceneSidebar } from './SceneSidebar';
 import { Header } from './Header';
@@ -14,20 +15,41 @@ import type { HumanRole } from './DigitalHuman';
 
 export function PlaybackChrome({
   course,
+  courseId,
   dark,
   onToggleTheme,
+  onBack,
+  initialSceneIndex,
 }: {
   readonly course: Course;
+  /** 进度 key —— **必须是数据集目录名**（`data4`），不是 `course.course.id`（会撞车）。 */
+  readonly courseId: string;
   readonly dark: boolean;
   readonly onToggleTheme: () => void;
+  /** 返回首页。缺省时 Header 的返回键为死键（旧 demo 行为）。 */
+  readonly onBack?: () => void;
+  /** 续播起点（scene 索引）。只在挂载时读一次。 */
+  readonly initialSceneIndex?: number;
 }) {
-  const playback = usePlayback(course);
+  const playback = usePlayback(course, initialSceneIndex);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [chatCollapsed, setChatCollapsed] = useState(false);
   const [isPresenting, setIsPresenting] = useState(false);
   const stageRef = useRef<HTMLDivElement>(null);
 
   const currentScene = course.scenes[playback.currentSceneIndex] ?? null;
+
+  /**
+   * 进度落盘：每次翻段写一次（够用且便宜）。
+   * 打开即记为「进行中」—— 符合「我学过这门课」的直觉。
+   */
+  useEffect(() => {
+    writeProgress(courseId, {
+      lastScene: playback.currentSceneIndex,
+      sceneCount: course.scenes.length,
+      updatedAt: Date.now(),
+    });
+  }, [courseId, playback.currentSceneIndex, course.scenes.length]);
 
   const agents = useMemo(() => buildAgents(course), [course]);
   /**
@@ -63,6 +85,7 @@ export function PlaybackChrome({
       {/* Top header — spans the full width, matching OpenMAIC's playback chrome */}
       <Header
         currentSceneTitle={currentScene?.title ?? course.course.title}
+        onBack={onBack}
         dark={dark}
         onToggleTheme={onToggleTheme}
       />

@@ -171,7 +171,7 @@ function itemFromAction(action: Action): WhiteboardItem | null {
   }
 }
 
-export function usePlayback(course: Course): PlaybackControls {
+export function usePlayback(course: Course, initialSceneIndex = 0): PlaybackControls {
   const scenes = course.scenes;
   const sceneCount = scenes.length;
 
@@ -654,9 +654,12 @@ export function usePlayback(course: Course): PlaybackControls {
     };
   }, []);
 
-  // Initialize on the first scene, then auto-play the demo.
+  // Initialize on the resume scene (clamped), then auto-play the demo.
+  // `initialSceneIndex` 刻意不进 deps：只在挂载时读一次，正确性由调用方的 `key` 保证。
+  // 续播起点必须走**这一个** owner —— 若再在调用方加一个 goToScene(saved) 的 effect，
+  // 同一 tick 里会 reset 两次（sceneSession +2 → 本页音频 effect 连建两次）。
   useEffect(() => {
-    resetForScene(0);
+    resetForScene(Math.max(0, Math.min(initialSceneIndex, sceneCount - 1)));
     const t = setTimeout(() => setEngineState((s) => (s === 'idle' ? 'playing' : s)), 600);
     return () => {
       clearTimeout(t);
