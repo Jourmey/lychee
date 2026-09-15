@@ -142,3 +142,72 @@
     opacity: 1;
   }
 }
+
+/* ==================== 2D 数字人（DigitalHuman / DigitalHumanLayer） ==================== */
+/* 注意：Tailwind v4 的 animate-[name_...] 会把自定义动画名吃掉，故这几条一律走内联
+   style 引用（style={{ animation: 'dh-breathe 3.8s ...' }}）。 */
+
+/* 待机：呼吸起伏 */
+@keyframes dh-breathe {
+  0%,
+  100% {
+    transform: translateY(0) scale(1);
+  }
+  50% {
+    transform: translateY(-2.5px) scale(1.008);
+  }
+}
+
+/* 说话：轻微点头 + 左右微晃 */
+@keyframes dh-talk-bob {
+  0%,
+  100% {
+    transform: translateY(0) rotate(-0.7deg);
+  }
+  50% {
+    transform: translateY(-3.5px) rotate(0.7deg);
+  }
+}
+
+/* 眨眼：一个 5.2s 周期眨两次（缩 Y 围绕眼睛自身中心，见 Eye 的嵌套 g） */
+@keyframes dh-blink {
+  0%,
+  42%,
+  46%,
+  88%,
+  93%,
+  100% {
+    transform: scaleY(1);
+  }
+  44% {
+    transform: scaleY(0.06);
+  }
+  90.5% {
+    transform: scaleY(0.06);
+  }
+}
+
+/* 说话光晕 / AI 天线脉冲 */
+@keyframes dh-ring {
+  0%,
+  100% {
+    opacity: 0.4;
+    transform: scale(0.94);
+  }
+  50% {
+    opacity: 0.9;
+    transform: scale(1.08);
+  }
+}
+
+/* 登场：从下方轻微弹出 */
+@keyframes dh-pop {
+  from {
+    opacity: 0;
+    transform: translateY(14px) scale(0.9);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}

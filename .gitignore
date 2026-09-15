@@ -4,11 +4,13 @@ packages
 *.local
 .DS_Store
 .idea
-# 数据集目录：大文件（its-content / transcripts / data.json / alignment / 回放）不进 git，
-# 但逐页手工数据 pages.json 与课程配置 dataset.config.json 必须进 git。
+# 数据集目录：大文件（its-content / transcripts / alignment / 回放）不进 git；
+# data4 是当前部署的数据集，它的 data.json（构建产物）/ pages.json（手工逐页数据）
+# / dataset.config.json（课程配置）必须进 git —— 构建时 App.tsx 会读 <DATASET>/data.json。
+# 注意必须写 `data4/*` 而不是 `data4/`，否则下面的 `!` 白名单不生效。
 data/
 data2/
 data3/
-data4/
+data4/*
 public/courseware
 public/audio

@@ -1,6 +1,7 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import type { Course } from '../types';
 import { usePlayback } from '../lib/usePlayback';
+import { buildAgents } from '../lib/agents';
 import { SceneSidebar } from './SceneSidebar';
 import { Header } from './Header';
 import { ItsStage } from './ItsStage';
@@ -8,6 +9,8 @@ import { CursorHighlight } from './CursorHighlight';
 import { DoodleLayer } from './DoodleLayer';
 import { CanvasToolbar } from './CanvasToolbar';
 import { ChatPanel } from './ChatPanel';
+import { DigitalHumanLayer } from './DigitalHumanLayer';
+import type { HumanRole } from './DigitalHuman';
 
 export function PlaybackChrome({
   course,
@@ -25,6 +28,21 @@ export function PlaybackChrome({
   const stageRef = useRef<HTMLDivElement>(null);
 
   const currentScene = course.scenes[playback.currentSceneIndex] ?? null;
+
+  const agents = useMemo(() => buildAgents(course), [course]);
+  /**
+   * 此刻谁在说话 —— 驱动数字人的口型。
+   * `activeLine` 是当前时间轴句序；逐句配音页里 `dialogue[i]` ↔ `lines[i]`（build-course 保证同序），
+   * 取它的 `speaker` 就是角色 id。暂停 / 未开始 / 没有逐句数据时为 null（两个数字人都闭嘴）。
+   */
+  const activeTurn =
+    playback.activeLine >= 0 ? currentScene?.dialogue?.[playback.activeLine] : undefined;
+  const speakingRole: HumanRole | null =
+    playback.engineState === 'playing' && activeTurn
+      ? activeTurn.speaker === 'assistant'
+        ? 'assistant'
+        : 'teacher'
+      : null;
 
   const toggleFullscreen = useCallback(() => {
     const el = stageRef.current;
@@ -73,6 +91,12 @@ export function PlaybackChrome({
             />
             <DoodleLayer doodles={playback.activeDoodles} />
             <CursorHighlight highlight={playback.activeHighlight} />
+            {/* 2D 数字人（老师 / AI 助教）：浮在课件之上，可拖动 */}
+            <DigitalHumanLayer
+              speakingRole={speakingRole}
+              teacherName={agents.teacher.name}
+              assistantName={agents.assistant.name}
+            />
           </div>
 
           {/* Bottom bar — 画布工具条（原 Roundtable 已拆掉，讲解改由右侧逐字稿承载） */}
