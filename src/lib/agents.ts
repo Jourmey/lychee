@@ -1,5 +1,11 @@
 import type { Course } from '../types';
 
+/**
+ * 本地头像（`public/avatars/`）是走 `<base>` 的静态资源，必须带部署前缀。
+ * `BASE_URL` 由 Vite 注入（= vite.config.ts 的 `base`，结尾带 `/`）。
+ */
+const AVATARS = `${import.meta.env.BASE_URL}avatars/`;
+
 /** Agent identity + accent color (mirrors OpenMAIC's role colors). */
 export interface Agent {
   id: string;
@@ -26,7 +32,7 @@ export function buildAgents(course: Course): Record<string, Agent> {
       role: '老师',
       color: '#8b5cf6',
       avatarBg: 'from-purple-500 to-indigo-600',
-      avatar: course.course.teacher?.avatar ?? '/avatars/teacher.svg',
+      avatar: course.course.teacher?.avatar ?? `${AVATARS}teacher.svg`,
       isTeacher: true,
     },
     assistant: {
@@ -42,7 +48,7 @@ export function buildAgents(course: Course): Record<string, Agent> {
       role: '学生',
       color: '#60a5fa',
       avatarBg: 'from-blue-500 to-sky-600',
-      avatar: '/avatars/student1.svg',
+      avatar: `${AVATARS}student1.svg`,
     },
   };
 }
